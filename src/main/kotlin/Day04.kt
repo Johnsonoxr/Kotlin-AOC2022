@@ -18,9 +18,9 @@ fun main() {
     }
 
     fun part2(): Int {
-        val fullyContains = loadAsIntRangeOf2ElvesList()
+        val overlaps = loadAsIntRangeOf2ElvesList()
             .filter { (elf1, elf2) -> elf1.intersect(elf2).isNotEmpty() }
-        return fullyContains.count()
+        return overlaps.count()
     }
 
     println("part1 = ${part1()}")
