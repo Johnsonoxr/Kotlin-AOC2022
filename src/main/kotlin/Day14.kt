@@ -151,7 +151,7 @@ fun main() {
     }
 
     val part1 = part1()
-    val parr2 = part2()
+    val part2 = part2()
     println("part1 = $part1")
-    println("part2 = $parr2")
+    println("part2 = $part2")
 }
