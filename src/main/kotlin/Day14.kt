@@ -11,9 +11,26 @@ fun main() {
         val rocks = mutableSetOf<Point>()
         val sands = mutableSetOf<Point>()
         val baseLine: Int by lazy { rocks.maxOf { it.y } + 2 }
+        val stopMap = mutableMapOf<Point, MutableSet<Point>>()
 
         init {
             loadData().forEach { path -> addRockPath(path) }
+            stopMap.putAll(rocks.associateWith { mutableSetOf() })
+            rocks.forEach { rock ->
+                stopMap[rock]?.addAll(rocks.filter { it.canBeStopBy(rock) })
+            }
+            stopMap.entries.removeIf { it.value.size == 3 }
+        }
+
+        fun updateSurfaceParticles(sand: Point) {
+            stopMap.filterKeys { sand.canBeStopBy(it) }.values.forEach { stopCandidates -> stopCandidates.add(sand) }
+            stopMap.putIfAbsent(sand, mutableSetOf())
+            stopMap[sand]!!.addAll(stopMap.keys.filter { particle -> particle.canBeStopBy(sand) })
+            stopMap.entries.removeIf { it.value.size == 3 }
+        }
+
+        fun Point.canBeStopBy(p: Point): Boolean {
+            return p.y == this.y + 1 && p.x in (this.x - 1..this.x + 1)
         }
 
         fun addRockPath(path: String) {
@@ -35,12 +52,12 @@ fun main() {
             }
         }
 
-        fun plot() {
+        fun plot(sandSource: Point? = null) {
             val particles = rocks.union(sands)
 
             val xStart = particles.minOf { it.x }
             val xEnd = particles.maxOf { it.x }
-            val yStart = particles.minOf { it.y }
+            val yStart = min(particles.minOf { it.y }, sandSource?.y ?: Int.MAX_VALUE)
             val yEnd = if (withBaseLine) baseLine else particles.maxOf { it.y }
             val figure = Array(yEnd - yStart + 1) { Array(xEnd - xStart + 1) { "." } }
 
@@ -49,17 +66,18 @@ fun main() {
             if (withBaseLine) {
                 (xStart..xEnd).forEach { x -> figure[baseLine - yStart][x - xStart] = "#" }
             }
+            stopMap.keys.forEach { figure[it.y - yStart][it.x - xStart] = "${stopMap[it]?.size}" }
+            sandSource?.also { figure[it.y - yStart][it.x - xStart] = "+" }
 
             figure.joinToString(separator = "\n", postfix = "\n") { it.joinToString(separator = "") }.log()
         }
 
         fun dropSandFrom(sand: Point): Boolean {
-            val particles = rocks.union(sands)
 
             while (true) {
-                val targetHit = particles.filter { it.x == sand.x && it.y > sand.y }.minByOrNull { it.y } ?: if (withBaseLine) {
+                val targetHit = stopMap.keys.filter { it.x == sand.x && it.y > sand.y }.minByOrNull { it.y } ?: if (withBaseLine) {
                     sand.move(sand.x, baseLine - 1)
-                    sands.add(sand)
+                    putSand(sand)
                     return true
                 } else {
                     return false
@@ -70,19 +88,25 @@ fun main() {
                     continue
                 }
 
-                if (sand.apply { translate(-1, 1) } !in particles) {
+                if (sand.apply { translate(-1, 1) } !in stopMap) {
                     continue
                 }
                 sand.translate(1, -1)
 
-                if (sand.apply { translate(1, 1) } !in particles) {
+                if (sand.apply { translate(1, 1) } !in stopMap) {
                     continue
                 }
                 sand.translate(-1, -1)
 
-                sands.add(Point(sand))
+                putSand(sand)
                 return true
             }
+
+        }
+
+        fun putSand(sand: Point) {
+            sands.add(sand)
+            updateSurfaceParticles(sand)
         }
     }
 
@@ -109,8 +133,10 @@ fun main() {
         val sandSource = Point(500, 0)
         var round = 1
         while (true) {
-            "===== Round #$round =====".log()
-//            cave.plot()
+            if (round % 5000 == 0) {
+                "===== Round #$round =====".log()
+                cave.plot(sandSource)
+            }
             cave.dropSandFrom(Point(sandSource))
 
             if (sandSource in cave.sands) {
@@ -119,10 +145,13 @@ fun main() {
 
             round++
         }
+        cave.plot(sandSource)
 
         return cave.sands.size
     }
 
-    println("part1 = ${part1()}")
-//    println("part2 = ${part2()}")
+    val part1 = part1()
+    val parr2 = part2()
+    println("part1 = $part1")
+    println("part2 = $parr2")
 }
