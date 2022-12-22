@@ -6,7 +6,7 @@ import kotlin.math.min
 
 fun main() {
 
-    fun loadData() = File("src/main/resources/Day15.txt").readLines()
+    fun loadData() = File("src/main/resources/Day15_test.txt").readLines()
 
     fun loadSensorBeaconPairs(): List<Pair<Point, Point>> {
         return loadData().map { line ->
