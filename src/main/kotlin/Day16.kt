@@ -8,7 +8,7 @@ fun main() {
         val connectedValves: MutableMap<Valve, Int> = mutableMapOf()
 
         override fun toString(): String {
-            return "Valve($name, fr=$flowRate, to=${connectedValves.map { "${it.key.name}-${it.value}" }})"
+            return "Valve($name, fr=$flowRate, to=${connectedValves.map { "${it.key.name}(${it.value})" }})"
         }
     }
 
@@ -39,45 +39,93 @@ fun main() {
     }
 
     fun greedySearch() {
-        val valves = loadAsValves()
-        val mutableValves = valves.toMutableList()
-        var currentValve = valves.find { it.name == "AA" }!!
+        val tree = Tree()
+        val TESTED = "tested"
 
-        valves.filter { it.flowRate == 0 && it !== currentValve }.forEach { removeValveFromConnection(it, mutableValves) }
-//        mutableValves.forEach { it.log() }
+        val valves: List<Valve> = loadAsValves()
+        val startValve = valves.find { it.name == "AA" }!!
+        var remainingValves: MutableList<Valve> = valves.toMutableList()
+        valves.filter { it.flowRate == 0 && it !== startValve }.forEach { removeValveFromConnection(it, remainingValves) }
+        val finalRemainingValves = remainingValves.toList()
+        val finalValvesConnection = finalRemainingValves.associateWith { it.connectedValves.toList() }
 
-        val root: MutableMap<String, Any?> = mutableMapOf()
-        var node: MutableMap<String, Any?> = root
-        var previousMoves: List<String>? = null
+        val shortestMinutesMap = mutableMapOf<String, MutableMap<String, Int>>()
+        finalRemainingValves.forEach { v ->
+            shortestMinutesMap.putIfAbsent(v.name, mutableMapOf(v.name to 0))
+            val vMap = shortestMinutesMap[v.name]!!
+            vMap.putAll(v.connectedValves.map { it.key.name to it.value })
+            while (true) {
+                val modification = mutableMapOf<String, Int>()
+                vMap.forEach { (anotherV, minutes) ->
+                    finalRemainingValves.first { it.name == anotherV }.connectedValves.forEach { (theOtherV, theOtherMinutes) ->
+                        val minutesToTheOtherV = vMap[theOtherV.name]
+                        if (minutesToTheOtherV == null || minutesToTheOtherV > minutes + theOtherMinutes) {
+                            modification[theOtherV.name] = minutes + theOtherMinutes
+                        }
+                    }
+                }
+                if (modification.isEmpty()) {
+                    break
+                } else {
+                    vMap.putAll(modification)
+                }
+            }
+        }
+        shortestMinutesMap.forEach { it.log() }
 
-        var releasedPressure = 0
-        var minutesLeft = 30
+        fun Any.log() {
 
-        var bestMoves: List<String>? = null
+        }
+
+        val bestMoves = mutableListOf<String>()
         var bestReleasedPressure = 0
 
-//        while (true) {
-//            var previousMovesPtr = 0
+        var round = 1
+        while (true) {
+            round++
+
+            tree.node = tree.root
+
+            remainingValves = finalRemainingValves.toMutableList()
+            var currentValve = startValve
+            remainingValves.forEach {
+                it.connectedValves.apply { clear() }.putAll(finalValvesConnection[it]!!)
+                it.isOpened = false
+            }
+
+            var releasedPressure = 0
+            var minutesLeft = 30
+
             val moves = mutableListOf<String>()
 
-            var prevMove: String? = null
+            var noOpenMinutes = 0
+            var noOpenMove: String? = currentValve.name
+
             while (minutesLeft > 0) {
                 "$minutesLeft minutes left, current valve [${currentValve.name}]".log()
 
-                val possibleMove = mutableListOf<String>()
-                if (!currentValve.isOpened && currentValve.flowRate > 0) {
-                    possibleMove.add("Open")
+                val untestedMoves = tree.branches()?.filter { it.note != TESTED }?.map { it.name }
+                val moveCandidates = untestedMoves ?: mutableListOf<String>().apply {
+                    if (!currentValve.isOpened && currentValve.flowRate > 0) {
+                        add("Open")
+                    }
+                    addAll(currentValve.connectedValves.filter { (neighbor, minutes) ->
+                        val shortestMinutes = shortestMinutesMap[noOpenMove]?.get(neighbor.name)
+                        if (shortestMinutes == null) {
+                            true
+                        } else {
+                            noOpenMinutes + minutes <= shortestMinutes
+                        }
+                    }.map { it.key.name })
+                    if (isEmpty()) {
+                        add("Done")
+                    }
+                    tree.addBranches(*(this.toTypedArray()))
                 }
-                possibleMove.addAll(currentValve.connectedValves.keys.filter { it.name != prevMove }.map { it.name })
-                if (possibleMove.isEmpty()) {
-                    possibleMove.add("Done")
-                }
-                val move = possibleMove.first()
-
-                node.putAll(possibleMove.associateWith { mutableMapOf() })
-                node = node[move] as MutableMap<String, Any?>
-
-                prevMove = move
+                val move = moveCandidates.first()
+                moves.add(move)
+                tree.checkout(move)
+                "Take action $move".log()
 
                 val pressureReleasedPerMinute = valves.filter { it.isOpened }.sumOf { it.flowRate }
 
@@ -86,20 +134,29 @@ fun main() {
                         releasedPressure += pressureReleasedPerMinute * 1
                         minutesLeft -= 1
                         currentValve.isOpened = true
+
+                        noOpenMinutes = 0
+                        noOpenMove = null
                     }
+
                     "Done" -> {
                         releasedPressure += pressureReleasedPerMinute * minutesLeft
                         minutesLeft = 0
                     }
+
                     else -> {
-                        val nextValve = mutableValves.find { it.name == move }!!
+                        val nextValve = remainingValves.find { it.name == move }!!
                         val minutesCost = min(currentValve.connectedValves[nextValve]!!, minutesLeft)
+                        noOpenMinutes += minutesCost
+                        if (noOpenMove == null) {
+                            noOpenMove = move
+                        }
 
                         releasedPressure += pressureReleasedPerMinute * minutesCost
                         minutesLeft -= minutesCost
 
                         if (currentValve.isOpened || currentValve.flowRate == 0) {
-                            removeValveFromConnection(currentValve, mutableValves)
+                            removeValveFromConnection(currentValve, remainingValves)
                         }
                         currentValve = nextValve
                     }
@@ -107,19 +164,40 @@ fun main() {
 
                 val openedValvesStr = valves.filter { it.isOpened }.map { it.name }.toString()
                 "Valves $openedValvesStr are open, released pressure = $releasedPressure".log()
-
-                "Take action $move\n".log()
             }
 
-            "$releasedPressure pressure released.".log()
-
-            if (releasedPressure > bestReleasedPressure) {
+//            if (round % 1000 == 0) {
+                "Round #$round: $releasedPressure pressure released with moves ${moves.joinToString("-")}".print()
+//            }
+            if (bestReleasedPressure < releasedPressure) {
                 bestReleasedPressure = releasedPressure
-                bestMoves = moves.toList()
+                bestMoves.clear()
+                bestMoves.addAll(moves)
+            }
+//            if (round % 10000 == 0) {
+//                "Temporary best: $bestReleasedPressure pressure released with moves ${bestMoves.joinToString("-")}".print()
+//            }
+
+            var endFlag = false
+
+            tree.node.note = TESTED
+            while (tree.toParent()) {
+                if (tree.branches()!!.all { it.note == TESTED }) {
+                    tree.node.note = TESTED
+                    if (tree.node == tree.root) {
+                        endFlag = true
+                    }
+                } else {
+                    break
+                }
             }
 
-            previousMoves = moves.toList()
-//        }
+            if (endFlag) {
+                break
+            }
+        }
+
+        "Best: $bestReleasedPressure pressure released with moves ${bestMoves.joinToString("-")}".print()
     }
 
     greedySearch()
