@@ -49,8 +49,6 @@ fun main() {
         return timeMap.filterKeys { it.flowRate != 0 || it.name == "AA" }
     }
 
-    loadValveTimeMap().forEach { (k, v) -> "${k.name} -> ${v.map { "${it.key.name}(${it.value})" }.joinToString(", ")}".print() }
-
     fun factorial(n: Int): Long {
         return if (n == 0) {
             1L
@@ -71,18 +69,25 @@ fun main() {
 
     fun describeValveChain(valves: List<Valve>): String = valves.joinToString("-") { it.name }
 
-    fun greedySearch() {
-        val directTimeMap = loadValveTimeMap()
-        val startValve = directTimeMap.keys.find { it.name == "AA" }!!
+    val valveTimeMap = loadValveTimeMap()
+    valveTimeMap.forEach { (k, v) -> "${k.name} -> ${v.map { "${it.key.name}(${it.value})" }.joinToString(", ")}".print() }
 
+    fun greedySearch(valvesToSearch: Collection<Valve>, logPrefix: String, verboseLog: Boolean = false): Int {
         fun Any.log() {
-
+            if (verboseLog) {
+                println(this)
+            }
         }
+        fun Any.print() {
+            println("[$logPrefix] $this")
+        }
+
+        val startValve = valveTimeMap.keys.find { it.name == "AA" }!!
 
         val bestMoves = mutableListOf<Valve>()
         var bestReleasedPressure = 0
 
-        val sortedValves = directTimeMap.keys.filter { it.flowRate != 0 }.sortedBy { it.name }
+        val sortedValves = valvesToSearch.filter { it.flowRate != 0 }.sortedBy { it.name }
 
         var seedCount = 0L
         val maxSeed: Long = factorial(sortedValves.size)
@@ -111,7 +116,7 @@ fun main() {
                     }
                     step < valves.size -> {
                         val nextValve = valves[step++]
-                        val minutesCost = min(directTimeMap[currentValve]?.get(nextValve) ?: Int.MAX_VALUE, minutesLeft)
+                        val minutesCost = min(valveTimeMap[currentValve]?.get(nextValve) ?: Int.MAX_VALUE, minutesLeft)
 
                         releasedPressure += pressureReleasedPerMinute * minutesCost
                         minutesLeft -= minutesCost
@@ -146,11 +151,12 @@ fun main() {
             seedCount++
         }
 
-        "\nTotal tested seeds: $seedCount".print()
+        "Total tested seeds: $seedCount".print()
         "Best: $bestReleasedPressure pressure released with moves ${describeValveChain(bestMoves)}".print()
+        return bestReleasedPressure
     }
 
-    greedySearch()
+    greedySearch(valveTimeMap.keys, "Part1")
 
 //    val part1 = part1()
 //    val part2 = part2()
