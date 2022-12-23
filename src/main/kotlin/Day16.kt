@@ -81,7 +81,7 @@ fun main() {
     fun part1(): Int {
         val (bestValveSeq, bestPressureReleased) = greedySearch(
             valveTimeMap.keys.first { it.name == "AA" },
-            valveTimeMap.keys.filter { it.flowRate > 0 },
+            valveTimeMap.keys.filter { it.name != "AA" },
             30
         )
         "Best: $bestPressureReleased with sequence ${describeValveChain(bestValveSeq!!)}".print()
@@ -105,12 +105,7 @@ fun main() {
                             return true
                         }
 
-                        else -> {
-                            idx -= 1
-                            if (idx < 0) {
-                                return false
-                            }
-                        }
+                        else -> idx -= 1
                     }
                 }
                 return false
@@ -119,25 +114,25 @@ fun main() {
             fun getList() = combination.map { list[it] }
         }
 
-        val valves = valveTimeMap.keys.filter { it.flowRate > 0 }.toList()
         val startValve = valveTimeMap.keys.find { it.name == "AA" }!!
+        val valves = valveTimeMap.keys.filter { it.name != "AA" }.toList()
 
         var bestPressureReleased = 0
         var myBestSteps = emptyList<Valve>()
         var elephantsBestSteps = emptyList<Valve>()
 
         var totalCombinations = 0
-        val dividedMax = valveTimeMap.size / 2
+        val dividedMax = valves.size / 2
         (1..dividedMax).forEach { myValveSize ->
             val combinationGenerator = CombinationGenerator(valves, myValveSize)
             do {
                 val myValves = combinationGenerator.getList()
                 val elephantValves = valves.filter { it !in myValves }
 
-                val (mySteps, myBestPressureReleased) = greedySearch(startValve, myValves, 26)
-                val (elephantsSteps, elephantBestPressureReleased) = greedySearch(startValve, elephantValves, 26)
+                val (mySteps, myPressureReleased) = greedySearch(startValve, myValves, 26)
+                val (elephantsSteps, elephantsPressureReleased) = greedySearch(startValve, elephantValves, 26)
 
-                val pressureReleased = myBestPressureReleased + elephantBestPressureReleased
+                val pressureReleased = myPressureReleased + elephantsPressureReleased
 
                 ("Given the combination of mine=${myValves.map { it.name }} and elephants=${elephantValves.map { it.name }}," +
                         " my steps ${describeValveChain(mySteps!!)} and elephant's steps ${describeValveChain(elephantsSteps!!)}" +
