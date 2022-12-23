@@ -5,10 +5,9 @@ fun main() {
 
     class Valve(val name: String, val flowRate: Int) {
         var isOpened = false
-        val connectedValves: MutableMap<Valve, Int> = mutableMapOf()
 
         override fun toString(): String {
-            return "Valve($name, fr=$flowRate, to=${connectedValves.map { "${it.key.name}(${it.value})" }})"
+            return "Valve($name, fr=$flowRate)"
         }
     }
 
@@ -60,7 +59,7 @@ fun main() {
         }
     }
 
-    fun List<Any>.changeOrder(seed: Long): List<Any> {
+    fun <T> List<T>.changeOrder(seed: Long): List<T> {
         if (size == 1) {
             return this
         }
@@ -89,7 +88,7 @@ fun main() {
         val maxSeed: Long = factorial(sortedValves.size)
         var sortSeed = 0L
         while (sortSeed < maxSeed) {
-            val valves = sortedValves.changeOrder(sortSeed).map { it as Valve }
+            val valves = sortedValves.changeOrder(sortSeed)
             var step = 0
 
             val remainingValves = valves.toMutableList()
