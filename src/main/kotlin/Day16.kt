@@ -1,10 +1,8 @@
 import java.io.File
-import kotlin.math.min
 
 fun main() {
 
     class Valve(val name: String, val flowRate: Int) {
-        var isOpened = false
 
         override fun toString(): String {
             return "Valve($name, fr=$flowRate)"
@@ -49,117 +47,121 @@ fun main() {
         return timeMap.filterKeys { it.flowRate != 0 || it.name == "AA" }
     }
 
-    fun factorial(n: Int): Long {
-        return if (n == 0) {
-            1L
-        } else {
-            (1L..n.toLong()).reduce { acc, i -> acc * i }
-        }
-    }
-
-    fun <T> List<T>.changeOrder(seed: Long): List<T> {
-        if (size == 1) {
-            return this
-        }
-        val mList = toMutableList()
-        val divider = factorial(size - 1)
-        val first = mList.removeAt((seed / divider).toInt())
-        return mutableListOf(first).also { it.addAll(mList.changeOrder(seed % divider)) }
-    }
-
     fun describeValveChain(valves: List<Valve>): String = valves.joinToString("-") { it.name }
 
     val valveTimeMap = loadValveTimeMap()
     valveTimeMap.forEach { (k, v) -> "${k.name} -> ${v.map { "${it.key.name}(${it.value})" }.joinToString(", ")}".print() }
 
-    fun greedySearch(valvesToSearch: Collection<Valve>, logPrefix: String, verboseLog: Boolean = false): Int {
-        fun Any.log() {
-            if (verboseLog) {
-                println(this)
+    fun greedySearch(previousValve: Valve, valvesToSolve: Collection<Valve>, minutes: Int): Pair<List<Valve>?, Int> {
+
+        var bestPressureReleased = 0
+        var bestValveList: MutableList<Valve>? = null
+
+        valvesToSolve.forEach { firstValve ->
+            val minutesLeft = minutes - valveTimeMap[previousValve]!![firstValve]!! - 1
+            if (minutesLeft <= 0) {
+                return@forEach
+            }
+            val pressure = minutesLeft * firstValve.flowRate
+
+            val valvesLeft = valvesToSolve.toMutableList().apply { remove(firstValve) }
+
+            val (valvesSolved, pressureSolved) = greedySearch(firstValve, valvesLeft, minutesLeft)
+
+            if (bestPressureReleased < pressure + pressureSolved) {
+                bestPressureReleased = pressure + pressureSolved
+                bestValveList = mutableListOf(firstValve)
+                valvesSolved?.also { bestValveList?.addAll(valvesSolved) }
             }
         }
-        fun Any.print() {
-            println("[$logPrefix] $this")
-        }
 
-        val startValve = valveTimeMap.keys.find { it.name == "AA" }!!
-
-        val bestMoves = mutableListOf<Valve>()
-        var bestReleasedPressure = 0
-
-        val sortedValves = valvesToSearch.filter { it.flowRate != 0 }.sortedBy { it.name }
-
-        var seedCount = 0L
-        val maxSeed: Long = factorial(sortedValves.size)
-        var sortSeed = 0L
-        while (sortSeed < maxSeed) {
-            val valves = sortedValves.changeOrder(sortSeed)
-            var step = 0
-
-            val remainingValves = valves.toMutableList()
-            remainingValves.forEach { it.isOpened = false }
-            var currentValve = startValve
-
-            var releasedPressure = 0
-            var minutesLeft = 30
-
-            while (minutesLeft > 0) {
-                "$minutesLeft minutes left, current valve [${currentValve.name}]".log()
-
-                val pressureReleasedPerMinute = valves.filter { it.isOpened }.sumOf { it.flowRate }
-
-                when {
-                    !currentValve.isOpened -> {
-                        releasedPressure += pressureReleasedPerMinute * 1
-                        minutesLeft -= 1
-                        currentValve.isOpened = true
-                    }
-                    step < valves.size -> {
-                        val nextValve = valves[step++]
-                        val minutesCost = min(valveTimeMap[currentValve]?.get(nextValve) ?: Int.MAX_VALUE, minutesLeft)
-
-                        releasedPressure += pressureReleasedPerMinute * minutesCost
-                        minutesLeft -= minutesCost
-
-                        currentValve = nextValve
-                    }
-                    else -> {
-                        releasedPressure += pressureReleasedPerMinute * minutesLeft
-                        minutesLeft = 0
-                    }
-                }
-
-                val openedValvesStr = valves.filter { it.isOpened }.map { it.name }.toString()
-                "Valves $openedValvesStr are open, released pressure = $releasedPressure".log()
-            }
-            val executedValves = valves.take(step)
-
-            "Seed #$sortSeed: $releasedPressure pressure released with moves ${describeValveChain(executedValves)}".print()
-            if (bestReleasedPressure < releasedPressure) {
-                bestReleasedPressure = releasedPressure
-                bestMoves.clear()
-                bestMoves.addAll(executedValves)
-            }
-
-            val redundantStepCount = valves.size - executedValves.size
-            sortSeed += if (redundantStepCount > 0) {
-                "Jump seeds with $redundantStepCount redundant steps.".log()
-                factorial(redundantStepCount)
-            } else {
-                1
-            }
-            seedCount++
-        }
-
-        "Total tested seeds: $seedCount".print()
-        "Best: $bestReleasedPressure pressure released with moves ${describeValveChain(bestMoves)}".print()
-        return bestReleasedPressure
+        return Pair(bestValveList, bestPressureReleased)
     }
 
-    greedySearch(valveTimeMap.keys, "Part1")
+    fun part1(): Int {
+        val (bestValveSeq, bestPressureReleased) = greedySearch(
+            valveTimeMap.keys.first { it.name == "AA" },
+            valveTimeMap.keys.filter { it.flowRate > 0 },
+            30
+        )
+        "Best: $bestPressureReleased with sequence ${describeValveChain(bestValveSeq!!)}".print()
 
-//    val part1 = part1()
-//    val part2 = part2()
-//    println("part1 = $part1")
-//    println("part2 = $part2")
+        return bestPressureReleased
+    }
+
+    fun part2(): Int {
+        class CombinationGenerator<T>(private val list: List<T>, private val k: Int) {
+            private val combination = MutableList(k) { it }
+
+            fun next(): Boolean {
+                var idx = k - 1
+                while (idx >= 0) {
+                    when {
+                        combination[idx] < list.size - (k - idx - 1) - 1 -> {
+                            combination[idx] += 1
+                            (idx + 1 until k).forEach { i ->
+                                combination[i] = combination[i - 1] + 1
+                            }
+                            return true
+                        }
+
+                        else -> {
+                            idx -= 1
+                            if (idx < 0) {
+                                return false
+                            }
+                        }
+                    }
+                }
+                return false
+            }
+
+            fun getList() = combination.map { list[it] }
+        }
+
+        val valves = valveTimeMap.keys.filter { it.flowRate > 0 }.toList()
+        val startValve = valveTimeMap.keys.find { it.name == "AA" }!!
+
+        var bestPressureReleased = 0
+        var myBestSteps = emptyList<Valve>()
+        var elephantsBestSteps = emptyList<Valve>()
+
+        var totalCombinations = 0
+        val dividedMax = valveTimeMap.size / 2
+        (1..dividedMax).forEach { myValveSize ->
+            val combinationGenerator = CombinationGenerator(valves, myValveSize)
+            do {
+                val myValves = combinationGenerator.getList()
+                val elephantValves = valves.filter { it !in myValves }
+
+                val (mySteps, myBestPressureReleased) = greedySearch(startValve, myValves, 26)
+                val (elephantsSteps, elephantBestPressureReleased) = greedySearch(startValve, elephantValves, 26)
+
+                val pressureReleased = myBestPressureReleased + elephantBestPressureReleased
+
+                ("Given the combination of mine=${myValves.map { it.name }} and elephants=${elephantValves.map { it.name }}," +
+                        " my steps ${describeValveChain(mySteps!!)} and elephant's steps ${describeValveChain(elephantsSteps!!)}" +
+                        " gives $pressureReleased pressure released!!").print()
+
+                if (bestPressureReleased < pressureReleased) {
+                    bestPressureReleased = pressureReleased
+                    myBestSteps = mySteps.toList()
+                    elephantsBestSteps = elephantsSteps.toList()
+                }
+                totalCombinations += 1
+            } while (combinationGenerator.next())
+        }
+
+        "Total combinations = $totalCombinations".print()
+        "Best of all: $bestPressureReleased pressure released.".print()
+        "My steps: ${describeValveChain(myBestSteps)}".print()
+        "Elephant's steps: ${describeValveChain(elephantsBestSteps)}".print()
+
+        return bestPressureReleased
+    }
+
+    val part1 = part1()
+    val part2 = part2()
+    println("part1 = $part1")
+    println("part2 = $part2")
 }
