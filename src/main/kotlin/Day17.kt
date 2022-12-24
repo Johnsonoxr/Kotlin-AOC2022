@@ -1,5 +1,4 @@
 import java.io.File
-import kotlin.math.max
 
 fun main() {
 
@@ -66,7 +65,7 @@ fun main() {
         }
     }
 
-    fun tetris(rockCount: Long, logLevel: Int = 2): Long {
+    fun part1(logLevel: Int = 2): Long {
         myLogLevel = logLevel
 
         val winds = loadWindDx()
@@ -75,8 +74,8 @@ fun main() {
         var windIdx = 0
         var chamberTop = 0L
 
-        (0L until rockCount).forEach { rockIdx ->
-            val rock = rocks[(rockIdx % rocks.size).toInt()]
+        repeat(times = 2022) {rockIdx ->
+            val rock = rocks[rockIdx % rocks.size]
 
             var rockY = 3L + chamberTop
             var rockX = 2
@@ -112,7 +111,7 @@ fun main() {
         return chamberTop
     }
 
-    val part1 = tetris(2022, logLevel = 2)
+    val part1 = part1(logLevel = 2)
 //    val part2 = tetris(1_000_000_000_000L, logLevel = 2)
     println("part1 = $part1")
 //    println("part2 = $part2")
