@@ -66,30 +66,19 @@ fun main() {
             (xMin..xMax).forEach { x ->
                 airPtsMapAlongX.putIfAbsent(x, mutableSetOf())
 
-                if (x == xMin && airPtsMapAlongX[x]!!.isEmpty()) {
-                    (yMin..yMax).forEach { y ->
-                        (zMin..zMax).forEach { z ->
-                            airPtsMapAlongX[x]!!.add(listOf(x, y, z))
-                        }
-                    }
-                    return@forEach
-                }
-
                 val nearbyMinX = max(x - 1, airPtsMapAlongX.keys.min())
                 val nearbyMaxX = min(x + 1, airPtsMapAlongX.keys.max())
 
                 val airNearbyPts = (nearbyMinX..nearbyMaxX).map { airPtsMapAlongX[it]!! }.flatten()
-                val airPtsInX = airPtsMapAlongX[x]!!
+                val airPtsInX = airPtsMapAlongX[x]
                 val lavaPtsInX = lavaPtsMapAlongX[x]
 
                 (yMin..yMax).forEach { y ->
                     (zMin..zMax).forEach { z ->
-                        val p = listOf(x, y, z)
-                        if (lavaPtsInX?.contains(p) != true
-                            && p !in airPtsInX
-                            && nearbyOffsets.map { p.zip(it) { a, offset -> a + offset } }.any { it in airNearbyPts }
-                        ) {
-                            airPtsInX.add(p)
+                        val pt = listOf(x, y, z)
+                        val nearbyPts = nearbyOffsets.map { offsets -> pt.zip(offsets) { a, offset -> a + offset } }
+                        if (lavaPtsInX?.contains(pt) != true && (x == xMin || nearbyPts.any { it in airNearbyPts })) {
+                            airPtsInX?.add(pt)
                         }
                     }
                 }
@@ -105,10 +94,10 @@ fun main() {
 
     fun part2(): Int {
         val lavaPts = loadPts()
-        val (airPts, squareSize) = fillAirPtsOutside(lavaPts)
+        val (airPts, cubeSize) = fillAirPtsOutside(lavaPts)
         val airSurface = calcSurfaces(airPts)
-        val (xSize, ySize, zSize) = squareSize
-        "Air cube size = $squareSize".logi()
+        val (xSize, ySize, zSize) = cubeSize
+        "Air cube size = $cubeSize".logi()
         return airSurface - 2 * (xSize * ySize + ySize * zSize + zSize * xSize)
     }
 
