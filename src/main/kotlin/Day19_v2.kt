@@ -3,17 +3,6 @@ import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.system.measureTimeMillis
 
-enum class Material(val str: String) {
-    Ore(str = "ore"),
-    Clay(str = "clay"),
-    Obsidian(str = "obsidian"),
-    Geode(str = "geode");
-
-    companion object {
-        fun fromStr(str: String) = values().first { it.str == str }
-    }
-}
-
 fun main() {
 
     class Robot(val harvesting: Material, val cost: Map<Material, Int>) {
