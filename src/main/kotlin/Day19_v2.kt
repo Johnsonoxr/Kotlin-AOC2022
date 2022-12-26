@@ -35,11 +35,19 @@ fun main() {
         override fun toString(): String {
             return "$harvesting-$id"
         }
+
+        override fun hashCode(): Int {
+            return id
+        }
+
+        override fun equals(other: Any?): Boolean {
+            return other is Robot && other.id == id
+        }
     }
 
     data class Blueprint(val robotType: Material, val costs: MaterialResources)
 
-    fun loadData() = File("src/main/resources/Day19t.txt").readLines()
+    fun loadData() = File("src/main/resources/Day19.txt").readLines()
 
     fun loadBlueprints(): List<Map<Material, Blueprint>> {
         val blueprints = mutableListOf<Map<Material, Blueprint>>()
@@ -62,25 +70,49 @@ fun main() {
 
     loadBlueprints().forEach { it.logi() }
 
+    fun whoShouldBeFired(recording: List<Triple<Int, MaterialResources, Robot>>): Robot? {
+        recording.forEachIndexed { i, (minuteLeftWhenCreated, resWhenCreated, robot) ->
+            val material = robot.harvesting
+            recording.subList(i + 1, recording.size).forEach { (minutesLeft, res, _) ->
+                if (minuteLeftWhenCreated - minutesLeft > res.m[material]!! - (resWhenCreated.m[material] ?: 0)) {
+                    return@forEachIndexed
+                }
+            }
+
+            if (robot.harvesting != Material.Ore) {
+                return@forEachIndexed
+            }
+            "Zombie found. $robot".logv()
+            return robot
+        }
+        return null
+    }
+
     fun harvest(
         blueprint: Map<Material, Blueprint>,
-        earlyBreak: IntArray,
+        recording: List<Triple<Int, MaterialResources, Robot>>,
+        employeeToBeFire: Array<Robot?>,
         harvestingRobots: List<Robot>,
         resources: MaterialResources,
         minutesLeft: Int
     ): Pair<List<Robot>, MaterialResources> {
 
-        if (minutesLeft < 1) {
+        if (employeeToBeFire[0] != null && employeeToBeFire[0] in harvestingRobots) {
             return Pair(harvestingRobots, resources)
         }
 
-        "Current robots: ${harvestingRobots.map { it.harvesting }}".logv()
+        if (minutesLeft < 1) {
+            employeeToBeFire[0] = whoShouldBeFired(recording)
+            return Pair(harvestingRobots, resources)
+        }
+
+        "Current robots: $harvestingRobots".logv()
         "Current resources: $resources".logv()
 
         var bestRobots = harvestingRobots
         var bestResources = resources + MaterialResources(harvestingRobots.map { it.harvesting }.groupingBy { it }.eachCount()) * minutesLeft
 
-        blueprint.values.forEach { bp ->
+        blueprint.values.sortedBy { it.robotType.ordinal }.reversed().forEach { bp ->
             val resourcesPerMinute = MaterialResources(harvestingRobots.map { it.harvesting }.groupingBy { it }.eachCount())
 
             val resAfterBuild = resources - bp.costs
@@ -98,15 +130,18 @@ fun main() {
             }
 
             if (minutesWait >= minutesLeft) {
+                employeeToBeFire[0] = whoShouldBeFired(recording)
                 return@forEach
             }
 
             val resAfterWait = resAfterBuild + resourcesPerMinute * minutesWait
+            val robot = Robot(bp.robotType)
 
             val (newRobots, newResource) = harvest(
                 blueprint = blueprint,
-                earlyBreak = earlyBreak,
-                harvestingRobots = harvestingRobots.toMutableList().apply { add(Robot(bp.robotType)) },
+                recording = recording.toMutableList().apply { add(Triple(minutesLeft - minutesWait, resAfterWait, robot)) },
+                employeeToBeFire = employeeToBeFire,
+                harvestingRobots = harvestingRobots.toMutableList().apply { add(robot) },
                 resources = resAfterWait,
                 minutesLeft = minutesLeft - minutesWait
             )
@@ -123,11 +158,12 @@ fun main() {
     fun part1(): Int {
         myLogLevel = 2
 
-        return loadBlueprints().take(1).mapIndexed { idx, bp ->
+        return loadBlueprints().mapIndexed { idx, bp ->
             val bpIdx = idx + 1
             val (robots, resources) = harvest(
                 blueprint = bp,
-                earlyBreak = intArrayOf(0, 5),
+                recording = listOf(),
+                employeeToBeFire = arrayOf(null),
                 harvestingRobots = listOf(Robot(Material.Ore)),
                 resources = MaterialResources(emptyMap()),
                 minutesLeft = 24
@@ -138,23 +174,24 @@ fun main() {
         }.reduce { acc, i -> acc + i }
     }
 
-//    fun part2(): Int {
-//        myLogLevel = 2
-//
-//        return loadBlueprints().take(3).mapIndexed { idx, bp ->
-//            val bpIdx = idx + 1
-//            val (robots, resources) = harvest(
-//                bpRobots = bp.values.toList(),
-//                earlyBreak = intArrayOf(0, 15),
-//                harvestingRobots = listOf(bp[Material.Ore]!!),
-//                resources = emptyMap(),
-//                minutesLeft = 32
-//            )
-//            val geodeOpened = resources[Material.Geode] ?: 0
-//            "Blueprint #$bpIdx gets $geodeOpened geode opened with robots ${robots.joinToString(separator = "-") { it.harvesting.name }}".logi()
-//            return@mapIndexed geodeOpened
-//        }.reduce { acc, i -> acc * i }
-//    }
+    fun part2(): Int {
+        myLogLevel = 2
+
+        return loadBlueprints().take(3).mapIndexed { idx, bp ->
+            val bpIdx = idx + 1
+            val (robots, resources) = harvest(
+                blueprint = bp,
+                recording = listOf(),
+                employeeToBeFire = arrayOf(null),
+                harvestingRobots = listOf(Robot(Material.Ore)),
+                resources = MaterialResources(emptyMap()),
+                minutesLeft = 32
+            )
+            val geodeOpened = resources.m[Material.Geode] ?: 0
+            "Blueprint #$bpIdx gets $geodeOpened geode opened with robots ${robots.joinToString(separator = "-") { it.harvesting.name }}".logi()
+            return@mapIndexed geodeOpened
+        }.reduce { acc, i -> acc * i }
+    }
 
     measureTimeMillis {
         val part1 = part1()
