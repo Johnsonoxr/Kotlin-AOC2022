@@ -47,7 +47,7 @@ fun main() {
 
     data class Blueprint(val robotType: Material, val costs: MaterialResources)
 
-    fun loadData() = File("src/main/resources/Day19.txt").readLines()
+    fun loadData() = File("src/main/resources/Day19t.txt").readLines()
 
     fun loadBlueprints(): List<Map<Material, Blueprint>> {
         val blueprints = mutableListOf<Map<Material, Blueprint>>()
