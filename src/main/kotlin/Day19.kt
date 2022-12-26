@@ -1,6 +1,8 @@
 import java.io.File
+import java.util.concurrent.Executors
 import kotlin.math.ceil
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.system.measureTimeMillis
 
 enum class Material(val str: String) {
@@ -16,138 +18,234 @@ enum class Material(val str: String) {
 
 fun main() {
 
-    class Robot(val harvesting: Material, val cost: Map<Material, Int>) {
-        override fun toString(): String {
-            return "$name(costs=${cost.map { (m, n) -> "$n ${m.name}s" }})"
+    var robotId = 0
+
+    class MaterialResources(val m: Map<Material, Int> = emptyMap()) {
+        operator fun plus(res: MaterialResources): MaterialResources {
+            return MaterialResources(m.toMutableMap().apply {
+                res.m.forEach { (m, n) -> this[m] = this.getOrDefault(m, 0) + n }
+            })
         }
 
-        val name = "${harvesting}Robot"
+        operator fun minus(res: MaterialResources): MaterialResources {
+            return MaterialResources(m.toMutableMap().apply {
+                res.m.forEach { (m, n) -> this[m] = this.getOrDefault(m, 0) - n }
+            })
+        }
+
+        operator fun times(n: Int): MaterialResources {
+            return MaterialResources(m.mapValues { it.value * n })
+        }
+
+        operator fun get(material: Material): Int {
+            return this.m.getOrDefault(material, defaultValue = 0)
+        }
+
+        operator fun contains(material: Material): Boolean {
+            return this.m.getOrDefault(material, defaultValue = 0) > 0
+        }
+
+        override fun toString(): String {
+            return "Res(${m.entries.joinToString(", ") { "${it.key}=${it.value}" }})"
+        }
     }
+
+    data class Robot(val harvesting: Material) {
+        val id = robotId++
+
+        override fun toString(): String {
+            return "$harvesting-$id"
+        }
+
+        override fun hashCode(): Int {
+            return id
+        }
+
+        override fun equals(other: Any?): Boolean {
+            return other is Robot && other.id == id
+        }
+    }
+
+    data class Blueprint(val robotType: Material, val costs: MaterialResources)
 
     fun loadData() = File("src/main/resources/Day19.txt").readLines()
 
-    fun loadBlueprints(): List<Map<Material, Robot>> {
-        val blueprints = mutableListOf<Map<Material, Robot>>()
+    fun loadBlueprintsList(): List<Map<Material, Blueprint>> {
+        val blueprints = mutableListOf<Map<Material, Blueprint>>()
         val blueprintSplitRegex = "Blueprint [0-9]+:".toRegex()
         val materialRetrieveRegex = "(${Material.values().joinToString("|") { it.str }})|[0-9]+".toRegex()
 
         loadData().joinToString("").split(blueprintSplitRegex).filter { it.isNotEmpty() }.forEach { line ->
-            val blueprint = mutableMapOf<Material, Robot>()
+            val blueprint = mutableMapOf<Material, Blueprint>()
             blueprints.add(blueprint)
 
             line.split(".").filter { it.isNotEmpty() }.map { linePerRobot ->
                 val words = materialRetrieveRegex.findAll(linePerRobot).map { it.groupValues[0] }.toList()
                 val produce = Material.fromStr(words.first())
                 val costs = words.subList(1, words.size).chunked(2).associate { (n, material) -> Material.fromStr(material) to n.toInt() }
-                blueprint[produce] = Robot(produce, costs)
+                blueprint[produce] = Blueprint(produce, MaterialResources(costs))
             }
         }
         return blueprints
     }
 
-    loadBlueprints().forEach { it.logi() }
+    loadBlueprintsList().forEach { it.logi() }
 
-    fun buildRobot(targetRobot: Robot, harvestingRobots: List<Robot>, resources: Map<Material, Int>): Pair<Int?, Map<Material, Int>> {
-        val resourcesPerMinute = harvestingRobots.map { it.harvesting }.groupingBy { it }.eachCount()
-
-        val minutes = targetRobot.cost.maxOf { (m, n) ->
-            val resLack = max(0, n - (resources[m] ?: 0))
-            if (resLack == 0) return@maxOf 1
-
-            val resPerMinute = resourcesPerMinute[m] ?: 0
-            if (resPerMinute == 0) return Pair(null, resources)
-
-            return@maxOf ceil(resLack.toDouble() / resPerMinute).toInt() + 1
+    fun minutesToBuildRobot(
+        blueprint: Blueprint,
+        resources: MaterialResources,
+        resourcesPerMinute: MaterialResources
+    ): Int? {
+        val resAfterBuild = resources - blueprint.costs
+        val lackedResources = resAfterBuild.m.filter { it.value < 0 }
+        val minutesWait = when {
+            lackedResources.isEmpty() -> 1
+            lackedResources.any { resourcesPerMinute[it.key] == 0 } -> null
+            else -> 1 + lackedResources.maxOf { (m, n) -> ceil(-n.toDouble() / resourcesPerMinute[m]).toInt() }
         }
-        val remainingResources = resources.toMutableMap().also { res ->
-            resourcesPerMinute.forEach { (m, n) -> res[m] = res.getOrDefault(m, defaultValue = 0) + n * minutes }
-            targetRobot.cost.forEach { (m, n) -> res[m] = res.getOrDefault(m, defaultValue = 0) - n }
-        }
-        return Pair(minutes, remainingResources)
+        return minutesWait
     }
 
-    fun maxGeodeGet(bpRobots: List<Robot>, harvestingRobots: List<Robot>, resources: Map<Material, Int>, minutesLeft: Int): Int {
-        return when (minutesLeft) {
-            0 -> resources[Material.Geode] ?: 0
-            1 -> {
-                val byRobotHarvesting = harvestingRobots.count { it.harvesting == Material.Geode }
-                byRobotHarvesting + (resources[Material.Geode] ?: 0)
-            }
+    fun bestShot(
+        blueprints: Map<Material, Blueprint>,
+        rpm: MaterialResources,
+        resources: MaterialResources,
+        minutes: Int
+    ): Int? {
 
-            else -> {
-                val robot = bpRobots.first { it.harvesting == Material.Geode }
-                val byRobotHarvesting = harvestingRobots.count { it.harvesting == Material.Geode }
-                val (minutesWait, res) = buildRobot(robot, harvestingRobots, resources)
-                if (minutesWait != null && minutesLeft > minutesWait) {
-                    if (minutesLeft - minutesWait > 1) {
-                        maxGeodeGet(bpRobots, harvestingRobots.toMutableList().apply { add(robot) }, res, minutesLeft - minutesWait)
-                    } else {
-                        byRobotHarvesting * minutesLeft + 1 * (minutesLeft - minutesWait) + (res[Material.Geode] ?: 0)
-                    }
-                } else {
-                    byRobotHarvesting * minutesLeft + (res[Material.Geode] ?: 0)
+        var geodeCrack = resources[Material.Geode]
+
+        if (minutes <= 0) {
+            return geodeCrack
+        }
+
+        geodeCrack += rpm[Material.Geode] * minutes
+
+        if (minutes <= 1) {
+            return geodeCrack
+        }
+
+        when (minutes) {
+            in 2..3 -> {
+                val minuteToWait = minutesToBuildRobot(blueprints[Material.Geode]!!, resources, rpm)
+                if (minuteToWait != null) {
+                    geodeCrack += min(0, minutes - minuteToWait)
                 }
             }
+
+            4 -> {
+                val minuteToWait = minutesToBuildRobot(blueprints[Material.Geode]!!, resources, rpm) ?: return geodeCrack // waste of time, early stop
+                if (minutes - minuteToWait >= 1) {
+                    return bestShot(
+                        blueprints = blueprints,
+                        rpm = rpm + MaterialResources(mapOf(Material.Geode to 1)),
+                        resources = resources + rpm * minuteToWait - blueprints[Material.Geode]!!.costs,
+                        minutes = minutes - minuteToWait
+                    )
+                } else {
+                    val (lackedMaterial, lackAmount) = (blueprints[Material.Geode]!!.costs - resources).m.maxBy { it.value }
+                    if (lackedMaterial !in rpm) {
+                        return geodeCrack    //  waste of time
+                    }
+                    val mToWait = ceil(lackAmount.toDouble() / rpm[lackedMaterial]).toInt()
+                    if (minutes - mToWait >= 3) {
+                        return bestShot(
+                            blueprints = blueprints,
+                            rpm = rpm + MaterialResources(mapOf(lackedMaterial to 1)),
+                            resources = resources + rpm * mToWait,
+                            minutes = minutes - mToWait
+                        )
+                    }
+                }
+            }
+
+            in 5..8 -> {
+                return if (Material.Obsidian !in rpm) {
+                    // wast of time, early stop
+                    0
+                } else {
+                    null
+                }
+            }
+
+            else -> return null
         }
+
+        return geodeCrack
     }
 
-    fun harvest(
-        bpRobots: List<Robot>,
-        earlyBreak: IntArray,
+    val executors = Executors.newCachedThreadPool()
+
+    fun greedySearch(
+        blueprints: Map<Material, Blueprint>,
         harvestingRobots: List<Robot>,
-        resources: Map<Material, Int>,
-        minutesLeft: Int
-    ): Pair<List<Robot>, Map<Material, Int>> {
+        resources: MaterialResources,
+        minutes: Int,
+        recording: List<Triple<Int, MaterialResources, Robot>>,
+        bestShotRecord: Array<Int>
+    ): Pair<List<Robot>, MaterialResources> {
 
-        if (minutesLeft < 1) {
-            return Pair(harvestingRobots, resources)
-        }
-
-        if (minutesLeft < earlyBreak[1]) {
-            if (maxGeodeGet(bpRobots, harvestingRobots, resources, minutesLeft) < (earlyBreak.firstOrNull() ?: 0)) {
-                return Pair(harvestingRobots, resources)
-            }
-        }
-
-        "Current robots: ${harvestingRobots.map { it.harvesting }}".logv()
+        "Current robots: $harvestingRobots".logv()
         "Current resources: $resources".logv()
 
+        if (harvestingRobots.size == 9) {
+            "Searching robots ${harvestingRobots.joinToString("-") { it.harvesting.name }}".logd()
+        }
+
+        val resourcesPerMinute = MaterialResources(harvestingRobots.map { it.harvesting }.groupingBy { it }.eachCount())
         var bestRobots = harvestingRobots
-        var bestResources = resources
-            .toMutableMap()
-            .also { res ->
-                harvestingRobots.map { it.harvesting }.groupingBy { it }.eachCount().forEach { (m, n) ->
-                    res[m] = res.getOrDefault(m, defaultValue = 0) + n * minutesLeft
-                }
-            }.toMap()
+        var bestResources = resources + resourcesPerMinute * minutes
 
-        bpRobots.forEach { robotToBuild ->
+        val bestShot = bestShot(blueprints, resourcesPerMinute, resources, minutes)
+        if (bestShot != null && bestShot < bestShotRecord[0]) {
+            return Pair(bestRobots, bestResources)
+        }
 
-            val (minutesWait, remainingResources) = buildRobot(robotToBuild, harvestingRobots, resources)
+        if (minutes > 1) {
+            val runnableList = mutableListOf<Runnable>()
+            blueprints.values.forEach { blueprint ->
+                runnableList.add(Runnable {
 
-            if (minutesWait == null || minutesWait >= minutesLeft) {
-                return@forEach
+                    val minutesWaitForBuild = minutesToBuildRobot(blueprint, resources, resourcesPerMinute) ?: return@Runnable
+
+                    if (minutesWaitForBuild > minutes) {
+                        return@Runnable
+                    }
+
+                    val robot = Robot(blueprint.robotType)
+                    val resLeft = resources + resourcesPerMinute * minutesWaitForBuild - blueprint.costs
+                    val minutesLeft = minutes - minutesWaitForBuild
+
+                    val (newRobots, newResource) = greedySearch(
+                        blueprints = blueprints,
+                        harvestingRobots = harvestingRobots.toMutableList().apply { add(robot) },
+                        resources = resLeft,
+                        minutes = minutesLeft,
+                        recording = recording.toMutableList().apply { add(Triple(minutesLeft, resLeft, robot)) },
+                        bestShotRecord = bestShotRecord
+                    )
+
+                    if (bestResources[Material.Geode] < newResource[Material.Geode]) {
+                        bestResources = newResource
+                        bestRobots = newRobots
+                    }
+
+                })
             }
 
-            val (newRobots, newResource) = harvest(
-                bpRobots = bpRobots,
-                earlyBreak = earlyBreak,
-                harvestingRobots = harvestingRobots.toMutableList().apply { add(robotToBuild) },
-                resources = remainingResources,
-                minutesLeft = minutesLeft - minutesWait
-            )
-
-            if (bestResources.getOrDefault(Material.Geode, defaultValue = 0) < newResource.getOrDefault(Material.Geode, defaultValue = 0)) {
-                bestResources = newResource
-                bestRobots = newRobots
+            if (harvestingRobots.size in (8..10)) {
+                val futures = runnableList.map { executors.submit(it) }
+                futures.forEach { it.get() }
+            } else {
+                runnableList.forEach { it.run() }
             }
         }
 
-        val geodes = bestResources[Material.Geode] ?: 0
-        if (geodes > earlyBreak[0]) {
-            earlyBreak[0] = geodes
-            ("Best progress updated: ${bestResources.getOrDefault(Material.Geode, defaultValue = 0)}" +
-                    " with ${bestRobots.joinToString("-") { it.harvesting.name }}").logi()
+        synchronized(bestShotRecord) {
+            if (bestShotRecord[0] < bestResources[Material.Geode]) {
+                "$bestResources with ${bestRobots.joinToString("-") { it.harvesting.name }}".logi()
+            }
+            bestShotRecord[0] = max(bestShotRecord[0], bestResources[Material.Geode])
         }
 
         return Pair(bestRobots, bestResources)
@@ -156,43 +254,56 @@ fun main() {
     fun part1(): Int {
         myLogLevel = 2
 
-        return loadBlueprints().mapIndexed { idx, bp ->
+        return loadBlueprintsList().mapIndexed { idx, bps ->
             val bpIdx = idx + 1
-            val (robots, resources) = harvest(
-                bpRobots = bp.values.toList(),
-                earlyBreak = intArrayOf(0, 5),
-                harvestingRobots = listOf(bp[Material.Ore]!!),
-                resources = emptyMap(),
-                minutesLeft = 24
+
+            val robotList = listOf(Robot(Material.Ore))
+            val res = MaterialResources()
+            val minutesLeft = 24
+
+            val (robots, resources) = greedySearch(
+                blueprints = bps,
+                harvestingRobots = robotList,
+                resources = res,
+                minutes = minutesLeft,
+                recording = listOf(),
+                bestShotRecord = arrayOf(0)
             )
-            val geodeOpened = resources[Material.Geode] ?: 0
+            val geodeOpened = resources[Material.Geode]
             "Blueprint #$bpIdx gets $geodeOpened geode opened with robots ${robots.joinToString(separator = "-") { it.harvesting.name }}".logi()
             return@mapIndexed bpIdx * geodeOpened
         }.reduce { acc, i -> acc + i }
     }
 
     fun part2(): Int {
-        myLogLevel = 2
+        myLogLevel = 1
 
-        return loadBlueprints().take(3).mapIndexed { idx, bp ->
+        val robotList = listOf(Robot(Material.Ore))
+        val res = MaterialResources()
+        val minutesLeft = 32
+
+        return loadBlueprintsList().take(3).mapIndexed { idx, bps ->
             val bpIdx = idx + 1
-            val (robots, resources) = harvest(
-                bpRobots = bp.values.toList(),
-                earlyBreak = intArrayOf(0, 15),
-                harvestingRobots = listOf(bp[Material.Ore]!!),
-                resources = emptyMap(),
-                minutesLeft = 32
+            val (robots, resources) = greedySearch(
+                blueprints = bps,
+                harvestingRobots = robotList,
+                resources = res,
+                minutes = minutesLeft,
+                recording = listOf(),
+                bestShotRecord = arrayOf(0)
             )
-            val geodeOpened = resources[Material.Geode] ?: 0
+            val geodeOpened = resources[Material.Geode]
             "Blueprint #$bpIdx gets $geodeOpened geode opened with robots ${robots.joinToString(separator = "-") { it.harvesting.name }}".logi()
             return@mapIndexed geodeOpened
         }.reduce { acc, i -> acc * i }
     }
 
     measureTimeMillis {
-//        val part1 = part1()
-    val part2 = part2()
-//        println("part1 = $part1")
-    println("part2 = $part2")
+        val part1 = part1()
+//        val part2 = part2()
+        println("part1 = $part1")
+//        println("part2 = $part2")
+
+        executors.shutdownNow()
     }.also { it.print() }
 }
