@@ -37,6 +37,10 @@ enum class Dir(val dx: Int, val dy: Int) {
         Turn.R -> Dir.values()[(this.ordinal + 1) % 4]
     }
 
+    fun isHorizontal() = this == LEFT || this == RIGHT
+
+    fun isVertical() = !isHorizontal()
+
     fun reverseDir() = when (this) {
         LEFT -> RIGHT
         RIGHT -> LEFT

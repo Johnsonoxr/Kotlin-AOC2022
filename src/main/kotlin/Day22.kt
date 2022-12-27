@@ -9,7 +9,9 @@ fun main() {
             return "P($x, $y)"
         }
 
-        fun offset(dir: Dir): P = P(x + dir.dx, y + dir.dy)
+        fun offset(dir: Dir): P = offset(dir.dx, dir.dy)
+
+        fun offset(dx: Int, dy: Int): P = P(this.x + dx, this.y + dy)
     }
 
     data class Rect(var x1: Int, var y1: Int, var x2: Int, var y2: Int) {
@@ -24,6 +26,14 @@ fun main() {
             return p.x in x1..x2 && p.y in y1..y2
         }
 
+        operator fun contains(rect: Rect): Boolean {
+            return rect.x1 >= x1 && rect.x2 <= x2 && rect.y1 >= y1 && rect.y2 <= y2
+        }
+
+        fun offset(dir: Dir): Rect {
+            return Rect(x1 + dir.dx, y1 + dir.dy, x2 + dir.dx, y2 + dir.dy)
+        }
+
         override fun toString(): String {
             return "Rect($x1, $y1 ~ $x2, $y2)"
         }
@@ -33,7 +43,11 @@ fun main() {
 
     class GroveMap(val w: Int, val h: Int, val faces: List<Rect>, val walls: Set<P>)
 
-    fun loadData() = File("src/main/resources/Day22t.txt").readLines()
+    abstract class Wrapper {
+        abstract fun wrap(p: P, dir: Dir): Pair<P, Dir>
+    }
+
+    fun loadData() = File("src/main/resources/Day22.txt").readLines()
 
     fun loadGroveMap(): Triple<GroveMap, List<Move>, P> {
 
@@ -100,10 +114,47 @@ fun main() {
         }
     }
 
-    fun part1(): Int {
-        myLogLevel = 1
+    class TransportWrapper(groveMap: GroveMap) : Wrapper() {
 
-        val (grove, moves, startP) = loadGroveMap()
+        val edgePairs: Map<Boolean, List<Pair<Rect, Rect>>>
+
+        init {
+            val verticalEdges = groveMap.faces.flatMap { listOf(Rect(it.x1, it.y1, it.x1, it.y2), Rect(it.x2, it.y1, it.x2, it.y2)) }
+            val unconnectedVerticalEdges = verticalEdges
+                .filter { edge -> groveMap.faces.none { edge.offset(Dir.LEFT) in it } || groveMap.faces.none { edge.offset(Dir.RIGHT) in it } }
+
+            val horizontalEdges = groveMap.faces.flatMap { listOf(Rect(it.x1, it.y1, it.x2, it.y1), Rect(it.x1, it.y2, it.x2, it.y2)) }
+            val unconnectedHorizontalEdges = horizontalEdges
+                .filter { edge -> groveMap.faces.none { edge.offset(Dir.UP) in it } || groveMap.faces.none { edge.offset(Dir.DOWN) in it } }
+
+            val verticalEdgePairs = unconnectedVerticalEdges.sortedBy { it.y1 }.chunked(2).map { Pair(it[0], it[1]) }
+            val horizontalEdgePairs = unconnectedHorizontalEdges.sortedBy { it.x1 }.chunked(2).map { Pair(it[0], it[1]) }
+
+            edgePairs = mapOf(
+                true to verticalEdgePairs,
+                false to horizontalEdgePairs
+            )
+        }
+
+        override fun wrap(p: P, dir: Dir): Pair<P, Dir> {
+            edgePairs[dir.isHorizontal()]!!.first { p in it.first || p in it.second }.also { edgePair ->
+                val fromEdge = if (p in edgePair.first) edgePair.first else edgePair.second
+                val toEdge = if (fromEdge == edgePair.first) edgePair.second else edgePair.first
+                return Pair(p.offset(toEdge.x1 - fromEdge.x1, toEdge.y1 - fromEdge.y1), dir)
+            }
+        }
+    }
+
+    class CubeWrapper(groveMap: GroveMap) : Wrapper() {
+
+        override fun wrap(p: P, dir: Dir): Pair<P, Dir> {
+            TODO("Not yet implemented")
+        }
+
+    }
+
+    fun startTheTrial(groveMap: GroveMap, wrapper: Wrapper, moves: List<Move>, startP: P): Pair<P, Dir> {
+
         var dir = Dir.RIGHT
         var p = startP
 
@@ -111,24 +162,23 @@ fun main() {
 
         moves.forEach { move ->
             move.logv()
-            var newP = P(p.x, p.y)
-
             for (step in 1..move.step) {
 
-                newP = newP.offset(dir)
-
-                if (grove.faces.none { newP in it }) {
-                    newP = wrap(grove, newP, dir)
-                    "Wrap to $newP".logv()
+                var stepP = p.offset(dir)
+                if (groveMap.faces.none { stepP in it }) {
+                    val wrapResult = wrapper.wrap(p, dir)
+                    stepP = wrapResult.first
+                    dir = wrapResult.second
+                    "Wrap to $stepP with direction $dir".logv()
                 }
 
-                val wall = grove.walls.firstOrNull { it == newP }
+                val wall = groveMap.walls.firstOrNull { it == stepP }
                 if (wall != null) {
                     "Bump into wall at $wall".logv()
                     break
                 }
 
-                p = newP
+                p = stepP
             }
 
             "Stop at $p".logv()
@@ -141,14 +191,31 @@ fun main() {
 
         "Final location: $p".logd()
 
-        val dirPassword = when (dir) {
+        return Pair(p, dir)
+    }
+
+    val (grove, moves, startP) = loadGroveMap()
+    val wrapper = TransportWrapper(grove)
+
+    fun part1(): Int {
+        myLogLevel = 1
+
+
+        val (finalP, finalDir) = startTheTrial(
+            groveMap = grove,
+            wrapper = wrapper,
+            moves = moves,
+            startP = startP
+        )
+
+        val dirPassword = when (finalDir) {
             Dir.RIGHT -> 0
             Dir.DOWN -> 1
             Dir.LEFT -> 2
             Dir.UP -> 3
         }
 
-        return 1000 * p.y + 4 * p.x + dirPassword
+        return 1000 * finalP.y + 4 * finalP.x + dirPassword
     }
 
     measureTimeMillis {
