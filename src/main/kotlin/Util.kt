@@ -2,7 +2,7 @@ fun Any.log() {
     println(this)
 }
 
-fun Any.print() {
+fun Any?.print() {
     println(this)
 }
 
