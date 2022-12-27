@@ -2,12 +2,6 @@ import java.awt.Point
 import java.io.File
 import java.lang.IllegalArgumentException
 
-enum class Dir(val dx: Int, val dy: Int) {
-    UP(0, -1),
-    DOWN(0, 1),
-    LEFT(-1, 0),
-    RIGHT(1, 0);
-}
 
 fun main() {
     class TwoDimArr(val arr: Array<Int?>, val stride: Int) {
