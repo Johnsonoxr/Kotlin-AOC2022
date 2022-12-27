@@ -1,4 +1,5 @@
 import java.io.File
+import kotlin.math.sqrt
 import kotlin.system.measureTimeMillis
 
 fun main() {
@@ -30,9 +31,9 @@ fun main() {
 
     data class Move(val step: Int, val turn: Turn?)
 
-    class GroveMap(val w: Int, val h: Int, val deepestInferno: List<Rect>, val walls: Set<P>)
+    class GroveMap(val w: Int, val h: Int, val faces: List<Rect>, val walls: Set<P>)
 
-    fun loadData() = File("src/main/resources/Day22.txt").readLines()
+    fun loadData() = File("src/main/resources/Day22t.txt").readLines()
 
     fun loadGroveMap(): Triple<GroveMap, List<Move>, P> {
 
@@ -42,26 +43,30 @@ fun main() {
         val groveWidth = lines.take(splitter).maxOf { it.length }
         val groveLines = lines.take(splitter).map { it + " ".repeat(groveWidth - it.length) }
 
-        val infernos = mutableListOf<Rect>()
-        val infernoRegex = " *".toRegex()
+        val faceRegex = "[.|#]+".toRegex()
+        val faces = mutableListOf<Rect>()
 
         val walls = mutableSetOf<P>()
         val wallRegex = "#".toRegex()
+
+        val edgeLength = sqrt(groveLines.joinToString(separator = "").count { !it.isWhitespace() } / 6.0).toInt()
 
         var startP: P? = null
 
         groveLines.forEachIndexed { idx, line ->
             val y = idx + 1
-            val infernoFractions = infernoRegex.findAll(line).toList()
-                .filter { it.value.isNotEmpty() }
-                .map { Rect(it.range.first + 1, y, it.range.last + 1, y) }
 
-            infernoFractions.forEach { fraction ->
-                val connectedInferno = infernos.firstOrNull { fraction.x1 == it.x1 && fraction.x2 == it.x2 && it.y2 + 1 == y }
-                if (connectedInferno != null) {
-                    connectedInferno.y2 = y
+            val faceFractions = faceRegex.findAll(line).toList()
+                .filter { it.value.isNotEmpty() }
+                .flatMap { it.range.chunked(edgeLength) }
+                .map { Rect(it.first() + 1, y, it.last() + 1, y) }
+
+            faceFractions.forEach { fraction ->
+                val connectedFace = faces.firstOrNull { it.h < edgeLength && fraction.x1 == it.x1 && fraction.x2 == it.x2 && it.y2 + 1 == y }
+                if (connectedFace != null) {
+                    connectedFace.y2 = y
                 } else {
-                    infernos.add(fraction)
+                    faces.add(fraction)
                 }
             }
 
@@ -72,7 +77,7 @@ fun main() {
             }
         }
 
-        val moves = "[0-9]+|[L|R]".toRegex().findAll(lines.last())
+        val moves = "[0-9]+|L|R".toRegex().findAll(lines.last())
             .map { it.value }.toList().chunked(2)
             .map {
                 when (it.size) {
@@ -81,16 +86,14 @@ fun main() {
                 }
             }
 
-        return Triple(GroveMap(groveWidth, groveLines.size, infernos, walls), moves, startP!!)
+        return Triple(GroveMap(groveWidth, groveLines.size, faces, walls), moves, startP!!)
     }
-
-    fun isOutsideTheMap(groveMap: GroveMap, p: P): Boolean = p.x <= 0 || p.x > groveMap.w || p.y <= 0 || p.y > groveMap.h
 
     fun wrap(groveMap: GroveMap, p: P, dir: Dir): P {
         var validP = P(p.x, p.y)
         while (true) {
             val nextP = validP.offset(dir.reverseDir())
-            if (isOutsideTheMap(groveMap, nextP) || groveMap.deepestInferno.any { nextP in it }) {
+            if (groveMap.faces.none { nextP in it }) {
                 return validP
             }
             validP = nextP
@@ -98,7 +101,7 @@ fun main() {
     }
 
     fun part1(): Int {
-        myLogLevel = 0
+        myLogLevel = 1
 
         val (grove, moves, startP) = loadGroveMap()
         var dir = Dir.RIGHT
@@ -107,14 +110,14 @@ fun main() {
         "Start at $p".logd()
 
         moves.forEach { move ->
-            move.print()
+            move.logv()
             var newP = P(p.x, p.y)
 
             for (step in 1..move.step) {
 
                 newP = newP.offset(dir)
 
-                if (isOutsideTheMap(grove, newP) || grove.deepestInferno.any { newP in it }) {
+                if (grove.faces.none { newP in it }) {
                     newP = wrap(grove, newP, dir)
                     "Wrap to $newP".logv()
                 }
