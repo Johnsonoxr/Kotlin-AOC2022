@@ -7,19 +7,19 @@ fun main() {
 
     fun loadEncryptedNumbers() = loadData().map { it.toInt() }
 
-    fun decrypt(data: List<Long>, decryptOrder: List<Long>): List<Long> {
+    fun decrypt(data: List<Pair<Long, Int>>): List<Pair<Long, Int>> {
         val mutableNumbers = data.toMutableList()
+        val sortedData = data.sortedBy { it.second }
 
         data.logv()
 
         val cycleSize = data.size - 1
 
-        for (number in decryptOrder) {
-            val prevIdx = mutableNumbers.indexOf(number)
+        for (pair in sortedData) {
+            val prevIdx = mutableNumbers.indexOf(pair)
             mutableNumbers.removeAt(prevIdx)
-            val newIndex = ((prevIdx + number) % cycleSize + cycleSize) % cycleSize
-            mutableNumbers.add(newIndex.toInt(), number)
-
+            val newIndex = ((prevIdx + pair.first) % cycleSize + cycleSize) % cycleSize
+            mutableNumbers.add(newIndex.toInt(), pair)
             mutableNumbers.logv()
         }
 
@@ -30,10 +30,12 @@ fun main() {
         myLogLevel = 1
 
         val data = loadEncryptedNumbers().map { it.toLong() }
-        val decryptedData = decrypt(data, data)
-        val idxOfZero = decryptedData.indexOf(0)
+        val decryptedData = decrypt(data.zip(data.indices))
+        val decryptedNumbers = decryptedData.map { it.first }
+
+        val idxOfZero = decryptedNumbers.indexOf(0)
         val coordinates = listOf(1000, 2000, 3000).map { offset ->
-            decryptedData[((idxOfZero + offset) % decryptedData.size + decryptedData.size) % decryptedData.size]
+            decryptedNumbers[((idxOfZero + offset) % decryptedNumbers.size + decryptedNumbers.size) % decryptedNumbers.size]
         }
         coordinates.logi()
         return coordinates.sum().toInt()
@@ -43,18 +45,16 @@ fun main() {
         myLogLevel = 2
 
         val data = loadEncryptedNumbers().map { it.toLong() * 811589153L }
-        var decryptedData = data
-
-        decryptedData.logd()
-
+        var decryptedData = data.zip(data.indices)
         repeat(times = 10) {
-            decryptedData = decrypt(decryptedData, data)
+            decryptedData = decrypt(decryptedData)
             decryptedData.logd()
         }
+        val decryptedNumbers = decryptedData.map { it.first }
 
-        val idxOfZero = decryptedData.indexOf(0)
+        val idxOfZero = decryptedNumbers.indexOf(0)
         val coordinates = listOf(1000, 2000, 3000).map { offset ->
-            decryptedData[((idxOfZero + offset) % decryptedData.size + decryptedData.size) % decryptedData.size]
+            decryptedNumbers[((idxOfZero + offset) % decryptedNumbers.size + decryptedNumbers.size) % decryptedNumbers.size]
         }
         coordinates.logi()
         return coordinates.sum()
