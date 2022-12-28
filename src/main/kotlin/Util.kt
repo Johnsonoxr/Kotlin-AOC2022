@@ -37,6 +37,13 @@ enum class Dir(val dx: Int, val dy: Int) {
         Turn.R -> Dir.values()[(this.ordinal + 1) % 4]
     }
 
+    fun plot() = when (this) {
+        LEFT -> "<"
+        UP -> "^"
+        RIGHT -> ">"
+        DOWN -> "v"
+    }
+
     fun isHorizontal() = this == LEFT || this == RIGHT
 
     fun isVertical() = !isHorizontal()

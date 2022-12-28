@@ -1,4 +1,7 @@
 import java.io.File
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sqrt
 import kotlin.system.measureTimeMillis
 
@@ -12,6 +15,8 @@ fun main() {
         fun offset(dir: Dir): P = offset(dir.dx, dir.dy)
 
         fun offset(dx: Int, dy: Int): P = P(this.x + dx, this.y + dy)
+
+        fun minkowskiDistance(p: P): Int = abs(x - p.x) + abs(y - p.y)
     }
 
     data class Rect(var x1: Int, var y1: Int, var x2: Int, var y2: Int) {
@@ -41,7 +46,7 @@ fun main() {
 
     data class Move(val step: Int, val turn: Turn?)
 
-    class GroveMap(val w: Int, val h: Int, val faces: List<Rect>, val walls: Set<P>)
+    class GroveMap(val faces: List<Rect>, val walls: Set<P>)
 
     abstract class Wrapper {
         abstract fun wrap(p: P, dir: Dir): Pair<P, Dir>
@@ -100,21 +105,10 @@ fun main() {
                 }
             }
 
-        return Triple(GroveMap(groveWidth, groveLines.size, faces, walls), moves, startP!!)
+        return Triple(GroveMap(faces, walls), moves, startP!!)
     }
 
-    fun wrap(groveMap: GroveMap, p: P, dir: Dir): P {
-        var validP = P(p.x, p.y)
-        while (true) {
-            val nextP = validP.offset(dir.reverseDir())
-            if (groveMap.faces.none { nextP in it }) {
-                return validP
-            }
-            validP = nextP
-        }
-    }
-
-    class TransportWrapper(groveMap: GroveMap) : Wrapper() {
+    class TeleportWrapper(groveMap: GroveMap) : Wrapper() {
 
         val edgePairs: Map<Boolean, List<Pair<Rect, Rect>>>
 
@@ -145,18 +139,142 @@ fun main() {
         }
     }
 
-    class CubeWrapper(groveMap: GroveMap) : Wrapper() {
+    class CubicWrapper(groveMap: GroveMap) : Wrapper() {
 
-        override fun wrap(p: P, dir: Dir): Pair<P, Dir> {
-            TODO("Not yet implemented")
+        inner class Portal(val dir: Dir, val edge: Rect) {
+            override fun toString() = "Portal(${dir}: $edge)"
         }
 
+        val portals: List<Pair<Portal, Portal>>
+
+        init {
+            val efMap = mutableMapOf<Rect, Rect>()
+
+            val ecMap = mutableMapOf<Rect, Set<P>>()
+            val ceMap = mutableMapOf<P, MutableSet<Rect>>()
+
+            val cornerGroups = mutableSetOf<MutableSet<P>>()
+
+            val edgePairs = mutableSetOf<Set<Rect>>()
+
+            groveMap.faces.forEach { face ->
+
+                val corners = listOf(
+                    P(face.x1, face.y1),
+                    P(face.x1, face.y2),
+                    P(face.x2, face.y2),
+                    P(face.x2, face.y1)
+                )
+                val edges = mutableListOf<Rect>()
+                corners.toMutableList().apply { add(corners[0]) }.windowed(2).forEach { (p1, p2) ->
+                    val left = min(p1.x, p2.x)
+                    val right = max(p1.x, p2.x)
+                    val top = min(p1.y, p2.y)
+                    val bottom = max(p1.y, p2.y)
+                    val edge = Rect(left, top, right, bottom)
+                    ecMap[edge] = setOf(p1, p2)
+                    ceMap.putIfAbsent(p1, mutableSetOf())
+                    ceMap.putIfAbsent(p2, mutableSetOf())
+                    ceMap[p1]?.add(edge)
+                    ceMap[p2]?.add(edge)
+                    edges.add(edge)
+                }
+
+                efMap.putAll(edges.associateWith { face })
+            }
+
+            ceMap.keys.forEach { corner ->
+                val group = cornerGroups.firstOrNull { corners -> corners.any { it.minkowskiDistance(corner) <= 2 } }
+                if (group != null) {
+                    group.add(corner)
+                } else {
+                    cornerGroups.add(mutableSetOf(corner))
+                }
+            }
+
+            ecMap.keys.forEach { edge ->
+                if (edgePairs.any { edge in it }) {
+                    return@forEach
+                }
+                ecMap.keys.firstOrNull { e -> Dir.values().any { dir -> e.offset(dir) == edge } }?.also { edge2 ->
+                    edgePairs.add(setOf(edge, edge2))
+                }
+            }
+
+            var updated = true
+            while (updated) {
+                updated = false
+                cornerGroups.filter { it.size == 3 }.forEach { cornerGroup ->
+                    if (updated) {
+                        return@forEach
+                    }
+                    val unpairedEdges = cornerGroup.flatMap { ceMap[it]!! }.filter { edge -> edgePairs.none { pair -> edge in pair } }
+                    if (unpairedEdges.size == 2) {
+                        edgePairs.add(unpairedEdges.toSet())
+                        val unmergedCorners = unpairedEdges.flatMap { ecMap[it]!! }.filter { it !in cornerGroup }
+                        val cornerGroupsToBeMerged = unmergedCorners.map { corner -> cornerGroups.first { corner in it } }.toSet()
+                        if (cornerGroupsToBeMerged.size == 2) {
+                            cornerGroups.removeAll(cornerGroupsToBeMerged)
+                            cornerGroups.add(cornerGroupsToBeMerged.reduce { acc, ps -> acc.union(ps).toMutableSet() })
+                        }
+                        updated = true
+                    }
+                }
+            }
+
+            val portals = mutableListOf<Pair<Portal, Portal>>()
+
+            fun dirFaceCenterToEdge(edge: Rect, face: Rect): Dir = when {
+                edge.x1 > face.x1 -> Dir.RIGHT
+                edge.x2 < face.x2 -> Dir.LEFT
+                edge.y1 > face.y1 -> Dir.DOWN
+                else -> Dir.UP
+            }
+
+            edgePairs.map { it.toList() }.forEach { (e1, e2) ->
+                val face1 = efMap[e1]!!
+                val face2 = efMap[e2]!!
+                val dir1 = dirFaceCenterToEdge(e1, face1)
+                val dir2 = dirFaceCenterToEdge(e2, face2)
+
+                portals.add(Pair(Portal(dir1, e1), Portal(dir2.reverseDir(), e2)))
+                portals.add(Pair(Portal(dir2, e2), Portal(dir1.reverseDir(), e1)))
+            }
+
+            this.portals = portals
+
+            this.portals.forEach { "${it.first} -> ${it.second}".logd() }
+        }
+
+        override fun wrap(p: P, dir: Dir): Pair<P, Dir> {
+            val (ptIn, ptOut) = portals.first { pair -> p in pair.first.edge && dir == pair.first.dir }
+
+            val edgeOffset: Int = when (dir) {
+                Dir.LEFT -> ptIn.edge.y2 - p.y
+                Dir.UP -> p.x - ptIn.edge.x1
+                Dir.RIGHT -> p.y - ptIn.edge.y1
+                Dir.DOWN -> ptIn.edge.x2 - p.x
+            }
+
+            val pOut: P = when (ptOut.dir) {
+                Dir.LEFT -> P(ptOut.edge.x1, ptOut.edge.y2 - edgeOffset)
+                Dir.UP -> P(ptOut.edge.x1 + edgeOffset, ptOut.edge.y1)
+                Dir.RIGHT -> P(ptOut.edge.x1, ptOut.edge.y1 + edgeOffset)
+                Dir.DOWN -> P(ptOut.edge.x2 - edgeOffset, ptOut.edge.y1)
+            }
+
+            return Pair(pOut, ptOut.dir)
+        }
     }
 
-    fun startTheTrial(groveMap: GroveMap, wrapper: Wrapper, moves: List<Move>, startP: P): Pair<P, Dir> {
+    fun startTheTrial(groveMap: GroveMap, wrapper: Wrapper, moves: List<Move>, startP: P): List<Pair<P, Dir>> {
+
+        val movements = mutableListOf<Pair<P, Dir>>()
 
         var dir = Dir.RIGHT
         var p = startP
+
+        movements.add(Pair(p, dir))
 
         "Start at $p".logd()
 
@@ -179,6 +297,8 @@ fun main() {
                 }
 
                 p = stepP
+
+                movements.add(Pair(p, dir))
             }
 
             "Stop at $p".logv()
@@ -191,37 +311,76 @@ fun main() {
 
         "Final location: $p".logd()
 
-        return Pair(p, dir)
+        return movements
     }
 
     val (grove, moves, startP) = loadGroveMap()
-    val wrapper = TransportWrapper(grove)
+
+    fun plotTraces(traces: List<Pair<P, Dir>>) {
+
+        val tracesGroupingByY = traces.groupBy { it.first.y }
+
+        loadData().forEachIndexed { y0, line ->
+            val y = y0 + 1
+            var linePlot = line
+            tracesGroupingByY[y]?.forEach { traceInY ->
+                val x = traceInY.first.x
+                linePlot = linePlot.replaceRange(x - 1, x, traceInY.second.plot())
+            }
+            linePlot.print()
+        }
+    }
 
     fun part1(): Int {
         myLogLevel = 1
 
+        val wrapper = TeleportWrapper(grove)
 
-        val (finalP, finalDir) = startTheTrial(
+        val traces = startTheTrial(
             groveMap = grove,
             wrapper = wrapper,
             moves = moves,
             startP = startP
         )
 
-        val dirPassword = when (finalDir) {
+        val facingPassword = when (traces.last().second) {
             Dir.RIGHT -> 0
             Dir.DOWN -> 1
             Dir.LEFT -> 2
             Dir.UP -> 3
         }
 
-        return 1000 * finalP.y + 4 * finalP.x + dirPassword
+        return 1000 * traces.last().first.y + 4 * traces.last().first.x + facingPassword
+    }
+
+    fun part2(): Int {
+        myLogLevel = 1
+
+        val wrapper = CubicWrapper(grove)
+
+        val traces = startTheTrial(
+            groveMap = grove,
+            wrapper = wrapper,
+            moves = moves,
+            startP = startP
+        )
+
+        val facingPassword = when (traces.last().second) {
+            Dir.RIGHT -> 0
+            Dir.DOWN -> 1
+            Dir.LEFT -> 2
+            Dir.UP -> 3
+        }
+
+//        plotTraces(traces)
+
+        return 1000 * traces.last().first.y + 4 * traces.last().first.x + facingPassword
     }
 
     measureTimeMillis {
         val part1 = part1()
-//        val part2 = part2()
+        val part2 = part2()
         println("part1 = $part1")
-//        println("part2 = $part2")
+        println("part2 = $part2")
     }.also { "$it milliseconds.".print() }
 }
