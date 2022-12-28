@@ -279,21 +279,22 @@ fun main() {
             move.logv()
             for (step in 1..move.step) {
 
-                var stepP = p.offset(dir)
-                if (groveMap.faces.none { stepP in it }) {
+                var nextP = p.offset(dir)
+                var nextDir = dir
+                if (groveMap.faces.none { nextP in it }) {
                     val wrapResult = wrapper.wrap(p, dir)
-                    stepP = wrapResult.first
-                    dir = wrapResult.second
-                    "Wrap to $stepP with direction $dir".logv()
+                    nextP = wrapResult.first
+                    nextDir = wrapResult.second
+                    "Wrap to $nextP with direction $nextDir".logv()
                 }
 
-                val wall = groveMap.walls.firstOrNull { it == stepP }
-                if (wall != null) {
-                    "Bump into wall at $wall".logv()
+                if (nextP in groveMap.walls) {
+                    "Bump into wall at $nextP".logv()
                     break
                 }
 
-                p = stepP
+                p = nextP
+                dir = nextDir
 
                 movements.add(Pair(p, dir))
             }
@@ -303,6 +304,8 @@ fun main() {
             if (move.turn != null) {
                 dir = dir.turn(move.turn)
                 "Turn ${move.turn}, current direction = $dir".logv()
+
+                movements.add(Pair(p, dir))
             }
         }
 
@@ -317,7 +320,10 @@ fun main() {
 
         val tracesGroupingByY = traces.groupBy { it.first.y }
 
-        loadData().forEachIndexed { y0, line ->
+        val lines = loadData()
+        val splitter = lines.indexOfFirst { it.isEmpty() }
+
+        lines.take(splitter).forEachIndexed { y0, line ->
             val y = y0 + 1
             var linePlot = line
             tracesGroupingByY[y]?.forEach { traceInY ->
@@ -339,6 +345,8 @@ fun main() {
             moves = moves,
             startP = startP
         )
+
+        plotTraces(traces)
 
         val facingPassword = when (traces.last().second) {
             Dir.RIGHT -> 0
