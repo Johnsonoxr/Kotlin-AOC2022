@@ -21,9 +21,6 @@ fun main() {
 
     data class Rect(var x1: Int, var y1: Int, var x2: Int, var y2: Int) {
 
-        val w: Int
-            get() = this.x2 - this.x1 + 1
-
         val h: Int
             get() = this.y2 - this.y1 + 1
 
@@ -267,7 +264,7 @@ fun main() {
         }
     }
 
-    fun startTheTrial(groveMap: GroveMap, wrapper: Wrapper, moves: List<Move>, startP: P): List<Pair<P, Dir>> {
+    fun startTraveling(groveMap: GroveMap, wrapper: Wrapper, moves: List<Move>, startP: P): List<Pair<P, Dir>> {
 
         val movements = mutableListOf<Pair<P, Dir>>()
 
@@ -336,7 +333,7 @@ fun main() {
 
         val wrapper = TeleportWrapper(grove)
 
-        val traces = startTheTrial(
+        val traces = startTraveling(
             groveMap = grove,
             wrapper = wrapper,
             moves = moves,
@@ -358,7 +355,7 @@ fun main() {
 
         val wrapper = CubicWrapper(grove)
 
-        val traces = startTheTrial(
+        val traces = startTraveling(
             groveMap = grove,
             wrapper = wrapper,
             moves = moves,
@@ -372,7 +369,7 @@ fun main() {
             Dir.UP -> 3
         }
 
-//        plotTraces(traces)
+        plotTraces(traces)
 
         return 1000 * traces.last().first.y + 4 * traces.last().first.x + facingPassword
     }
