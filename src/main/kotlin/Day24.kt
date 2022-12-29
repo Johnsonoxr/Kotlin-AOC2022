@@ -33,9 +33,9 @@ fun main() {
         lines.forEachIndexed { y, line ->
             blizzards.addAll(regex.findAll(line).map { match -> Blizzard(match.range.first, y, Dir.values().first { it.plot() == match.value }) })
         }
-        val w = lines.maxOf { it.length }
-        val h = lines.size
-        return Triple(blizzards, Pair(P(1, 0), P(w - 2, h - 1)), Pair(w, h))
+        val w = lines.maxOf { it.length } - 2
+        val h = lines.size - 2
+        return Triple(blizzards, Pair(P(1, 0), P(w, h + 1)), Pair(w, h))
     }
 
     fun leastCommonMultiple(a: Int, b: Int): Int {
@@ -65,9 +65,13 @@ fun main() {
         cycle: Int
     ): List<P>? {
 
-        val currentP = track.lastOrNull() ?: P(1, 0)
+        if (safeZones.size < track.size) {
+            return null
+        }
 
-        if (track.size + minkowskiDistance(currentP, targetP) >= bestShot[0]) {
+        val currentP = track.last()
+
+        if (track.size + minkowskiDistance(currentP, targetP) > bestShot[0]) {
             //  Not a chance to find better track.
             "Early stop".logv()
             return null
@@ -89,12 +93,12 @@ fun main() {
 
             if (x == targetP.x && y == targetP.y) {
                 val bestTrackSoFar = track.toMutableList().apply { add(targetP) }
-                bestShot[0] = bestTrackSoFar.size
-                "Track found with ${bestTrackSoFar.size} steps. Track = $bestTrackSoFar.".logi()
+                bestShot[0] = bestTrackSoFar.size - 1   // exclude start P
+                "Track with ${bestShot[0]} steps is found.".logi()
                 return bestTrackSoFar
             }
 
-            if (safeZones.getOrNull(track.size)?.get(y)?.get(x) == null && !(x == 1 && y == 0)) {
+            if (safeZones.getOrNull(track.size)?.get(y)?.get(x) == null) {
                 return@map null
             }
 
@@ -119,17 +123,23 @@ fun main() {
 
         val (blizzards, startEndPs, vallySize) = loadBlizzardMap()
         val (startP, endP) = startEndPs
-        val (mapW, mapH) = vallySize
+        val (vallyW, vallyH) = vallySize
 
-        val vallyXRange = (1..mapW - 2)
-        val vallyYRange = (1..mapH - 2)
-        val vallyW = mapW - 2
-        val vallyH = mapH - 2
+        val vallyXRange = (1..vallyW)
+        val vallyYRange = (1..vallyH)
 
         val cycle = leastCommonMultiple(vallyW, vallyH)
         val safeZones = mutableListOf<Map<Int, Map<Int, P>>>()
 
         repeat(times = cycle) {
+            val pts = vallyYRange.associateWith { y -> vallyXRange.associateWith { x -> P(x, y) }.toMutableMap() }.toMutableMap()
+            pts.putIfAbsent(startP.y, mutableMapOf())
+            pts[startP.y]!![startP.x] = startP
+            pts.putIfAbsent(endP.y, mutableMapOf())
+            pts[endP.y]!![endP.x] = endP
+
+            blizzards.forEach { blizzard -> pts[blizzard.y]?.remove(blizzard.x) }
+            safeZones.add(pts)
 
             blizzards.forEach { blizzard ->
                 blizzard.march()
@@ -145,7 +155,49 @@ fun main() {
                     }
                 }
             }
+        }
 
+        var track: List<P>?
+        var repeat = max(1, ceil(minkowskiDistance(startP, endP).toDouble() / cycle).toInt())
+        do {
+            val repeatedMutableSafeZones = (1..repeat).flatMap { safeZones.map { sz -> sz.mapValues { it.value.toMutableMap() }.toMutableMap() } }
+
+            "Try with at most ${repeatedMutableSafeZones.size} steps.".logi()
+
+            track = greedySearch(
+                safeZones = repeatedMutableSafeZones,
+                track = listOf(startP),
+                targetP = endP,
+                bestShot = intArrayOf(Int.MAX_VALUE),
+                cycle = cycle
+            )
+
+            if (track == null) {
+                "Track not found within ${repeatedMutableSafeZones.size} steps.".logi()
+            }
+
+            repeat++
+        } while (track == null)
+
+        "Best track found: $track".logi()
+
+        return track.size - 1
+    }
+
+    fun part2(): Int {
+        myLogLevel = 2
+
+        val (blizzards, startEndPs, vallySize) = loadBlizzardMap()
+        val (startP, endP) = startEndPs
+        val (vallyW, vallyH) = vallySize
+
+        val vallyXRange = (1..vallyW)
+        val vallyYRange = (1..vallyH)
+
+        val cycle = leastCommonMultiple(vallyW, vallyH)
+        val safeZones = mutableListOf<Map<Int, Map<Int, P>>>()
+
+        repeat(times = cycle) {
             val pts = vallyYRange.associateWith { y -> vallyXRange.associateWith { x -> P(x, y) }.toMutableMap() }.toMutableMap()
             pts.putIfAbsent(startP.y, mutableMapOf())
             pts[startP.y]!![startP.x] = startP
@@ -154,39 +206,75 @@ fun main() {
 
             blizzards.forEach { blizzard -> pts[blizzard.y]?.remove(blizzard.x) }
             safeZones.add(pts)
+
+            blizzards.forEach { blizzard ->
+                blizzard.march()
+                if (blizzard.dir.isHorizontal()) {
+                    when (blizzard.x) {
+                        0 -> blizzard.x = vallyW
+                        vallyW + 1 -> blizzard.x = 1
+                    }
+                } else {
+                    when (blizzard.y) {
+                        0 -> blizzard.y = vallyH
+                        vallyH + 1 -> blizzard.y = 1
+                    }
+                }
+            }
         }
 
-        var track: List<P>?
-        var repeat = max(1, ceil(minkowskiDistance(startP, endP).toDouble() / cycle).toInt())
-        do {
-            val repeatedMutableSaveZones = (1..repeat).flatMap { safeZones.map { sz -> sz.mapValues { it.value.toMutableMap() }.toMutableMap() } }
+        val track: MutableList<P> = mutableListOf()
+        val stepCounts = mutableListOf<Int>()
+        listOf(
+            Pair(startP, endP),
+            Pair(endP, startP),
+            Pair(startP, endP)
+        ).forEach { (fromP, toP) ->
+            var repeat = max(1, ceil(minkowskiDistance(startP, endP).toDouble() / cycle).toInt())
+            do {
+                val repeatedMutableSafeZones = (1..repeat)
+                    .flatMap { safeZones.map { sz -> sz.mapValues { it.value.toMutableMap() }.toMutableMap() } }
+                    .toMutableList()
+                    .apply {
+                        val passedBlizzard = track.size % cycle
+                        addAll(take(passedBlizzard))
+                        subList(0, passedBlizzard).clear()
+                    }
 
-            "Try with at most ${repeatedMutableSaveZones.size} steps.".logi()
+                "Try with at most ${repeatedMutableSafeZones.size} steps.".logd()
 
-            track = greedySearch(
-                safeZones = repeatedMutableSaveZones,
-                track = emptyList(),
-                targetP = endP,
-                bestShot = intArrayOf(Int.MAX_VALUE),
-                cycle = cycle
-            )
+                val oneWayTrack = greedySearch(
+                    safeZones = repeatedMutableSafeZones,
+                    track = listOf(fromP),
+                    targetP = toP,
+                    bestShot = intArrayOf(Int.MAX_VALUE),
+                    cycle = cycle
+                )
 
-            if (track == null) {
-                "Track not found within ${repeatedMutableSaveZones.size} steps.".logi()
-            }
+                if (oneWayTrack == null) {
+                    "Track not found within ${repeatedMutableSafeZones.size} steps.".logd()
+                } else {
+                    val excludeStartPTrack = oneWayTrack.subList(1, oneWayTrack.size)
+                    "Best track heading to $toP has been found: $excludeStartPTrack".logi()
+                    track.addAll(excludeStartPTrack)
+                    stepCounts.add(excludeStartPTrack.size)
+                }
 
-            repeat++
-        } while (track == null)
+                repeat++
+            } while (oneWayTrack == null)
+        }
 
         "Best track found: $track".logi()
+
+        "Sum of the steps: ${stepCounts.joinToString(" + ")} = ${track.size}".logi()
 
         return track.size
     }
 
     measureTimeMillis {
         val part1 = part1()
-//        val part2 = part2()
+        val part2 = part2()
         println("part1 = $part1")
-//        println("part2 = $part2")
+        println("part2 = $part2")
     }.also { "$it milliseconds.".print() }
 }
