@@ -39,13 +39,18 @@ fun main() {
         val elves = loadElves().toMutableList()
         val lookDirs = mutableListOf(Dir.UP, Dir.DOWN, Dir.LEFT, Dir.RIGHT)
 
-        fun looksGoodToMe(me: P, look: Dir): Boolean = lookOffsets[look]!!.all { offset -> me.offset(offset.x, offset.y) !in elves }
+        var elvesXyMap: Map<Int, Map<Int, P>>? = null
+
+        fun looksGoodToMe(me: P, look: Dir): Boolean {
+            return lookOffsets[look]!!.all { offset -> elvesXyMap?.get(me.y + offset.y)?.get(me.x + offset.x) == null }
+        }
 
         repeat(times = 10) {
 
             val nextElves: MutableList<Pair<P, P>> = mutableListOf()
 
             //  first half round
+            elvesXyMap = elves.groupBy { it.y }.mapValues { (_, v) -> v.associateBy { it.x } }.toMutableMap()
             elves.forEach { elf ->
                 val dirsThatLooksGood = lookDirs.filter { dir -> looksGoodToMe(elf, dir) }
 
@@ -81,12 +86,17 @@ fun main() {
         val elves = loadElves().toMutableList()
         val lookDirs = mutableListOf(Dir.UP, Dir.DOWN, Dir.LEFT, Dir.RIGHT)
 
-        fun looksGoodToMe(me: P, look: Dir): Boolean = lookOffsets[look]!!.all { offset -> me.offset(offset.x, offset.y) !in elves }
+        var elvesXyMap: Map<Int, Map<Int, P>>? = null
+
+        fun looksGoodToMe(me: P, look: Dir): Boolean {
+            return lookOffsets[look]!!.all { offset -> elvesXyMap?.get(me.y + offset.y)?.get(me.x + offset.x) == null }
+        }
 
         var round = 0
         while (true) {
             "Round #${++round}".logv()
 
+            elvesXyMap = elves.groupBy { it.y }.mapValues { (_, v) -> v.associateBy { it.x } }.toMutableMap()
             val nextElves: MutableList<Pair<P, P>> = mutableListOf()
             var lazyElfCount = 0
 
@@ -110,7 +120,7 @@ fun main() {
             elves.clear()
             nextElves.groupBy { it.second }.forEach { (_, elvesWhoWantToEnterP) ->
                 if (elvesWhoWantToEnterP.size > 1) {
-                    elves.addAll(elvesWhoWantToEnterP.map { it.first }) //  stay where you were
+                    elves.addAll(elvesWhoWantToEnterP.map { it.first }) //  P is too crowded, stay where you were
                 } else {
                     elves.add(elvesWhoWantToEnterP.first().second)
                 }
