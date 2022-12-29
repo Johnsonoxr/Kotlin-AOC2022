@@ -106,6 +106,7 @@ fun main() {
                 cycle = cycle
             )
 
+            //  Remove safe zones that we tried in current step so that we won't be able to (and don't need to) step into it again in other attempts.
             safeZones.getOrNull(track.size)?.get(y)?.remove(x)
 
             return@map trackTried
