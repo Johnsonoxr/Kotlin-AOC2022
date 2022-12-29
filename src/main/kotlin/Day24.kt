@@ -133,10 +133,16 @@ fun main() {
 
             blizzards.forEach { blizzard ->
                 blizzard.march()
-                if (blizzard.dir.isHorizontal() && blizzard.x !in vallyXRange) {
-                    blizzard.x = (blizzard.x + vallyW) % vallyW
-                } else if (blizzard.dir.isVertical() && blizzard.y !in vallyYRange) {
-                    blizzard.y = (blizzard.y + vallyH) % vallyH
+                if (blizzard.dir.isHorizontal()) {
+                    when (blizzard.x) {
+                        0 -> blizzard.x = vallyW
+                        vallyW + 1 -> blizzard.x = 1
+                    }
+                } else {
+                    when (blizzard.y) {
+                        0 -> blizzard.y = vallyH
+                        vallyH + 1 -> blizzard.y = 1
+                    }
                 }
             }
 
