@@ -1,6 +1,8 @@
 import java.awt.Point
 import java.io.File
 import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.max
 import kotlin.system.measureTimeMillis
 
 fun main() {
@@ -56,7 +58,7 @@ fun main() {
     )
 
     fun greedySearch(
-        safeZones: List<Map<Int, Map<Int, P>>>,
+        safeZones: List<MutableMap<Int, MutableMap<Int, P>>>,
         track: List<P>,
         targetP: P,
         bestShot: IntArray,
@@ -92,22 +94,26 @@ fun main() {
                 return bestTrackSoFar
             }
 
-            if (safeZones[track.size % safeZones.size][y]?.get(x) == null && !(x == 1 && y == 0)) {
+            if (safeZones.getOrNull(track.size)?.get(y)?.get(x) == null && !(x == 1 && y == 0)) {
                 return@map null
             }
 
-            return@map greedySearch(
+            val trackTried = greedySearch(
                 safeZones = safeZones,
                 track = track.toMutableList().apply { add(P(x, y)) },
                 targetP = targetP,
                 bestShot = bestShot,
                 cycle = cycle
             )
+
+            safeZones.getOrNull(track.size)?.get(y)?.remove(x)
+
+            return@map trackTried
         }
         return possibleTracks.minByOrNull { it?.size ?: Int.MAX_VALUE }
     }
 
-    fun part1() {
+    fun part1(): Int {
         myLogLevel = 1
 
         val (blizzards, startEndPs, vallySize) = loadBlizzardMap()
@@ -143,15 +149,31 @@ fun main() {
             safeZones.add(pts)
         }
 
-        val track = greedySearch(
-            safeZones = safeZones,
-            track = emptyList(),
-            targetP = endP,
-            bestShot = intArrayOf(Int.MAX_VALUE),
-            cycle = cycle
-        )
+        var track: List<P>?
+        var repeat = max(1, ceil(minkowskiDistance(startP, endP).toDouble() / cycle).toInt())
+        do {
+            val repeatedMutableSaveZones = (1..repeat).flatMap { safeZones.map { sz -> sz.mapValues { it.value.toMutableMap() }.toMutableMap() } }
 
-        "Track found: $track".logi()
+            "Try with at most ${repeatedMutableSaveZones.size} steps.".logi()
+
+            track = greedySearch(
+                safeZones = repeatedMutableSaveZones,
+                track = emptyList(),
+                targetP = endP,
+                bestShot = intArrayOf(Int.MAX_VALUE),
+                cycle = cycle
+            )
+
+            if (track == null) {
+                "Track not found within ${repeatedMutableSaveZones.size} steps.".logi()
+            }
+
+            repeat++
+        } while (track == null)
+
+        "Best track found: $track".logi()
+
+        return track.size
     }
 
     measureTimeMillis {
