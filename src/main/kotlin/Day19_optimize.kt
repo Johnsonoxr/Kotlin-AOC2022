@@ -3,7 +3,6 @@ import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import kotlin.math.ceil
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.system.measureTimeMillis
 
 interface SearchResult : Callable<Pair<List<Material>, Int>>
@@ -251,9 +250,9 @@ fun main() {
     }
 
     measureTimeMillis {
-//        val part1 = part1()
+        val part1 = part1()
         val part2 = part2()
-//        println("part1 = $part1")
+        println("part1 = $part1")
         println("part2 = $part2")
 
         executor.shutdownNow()
