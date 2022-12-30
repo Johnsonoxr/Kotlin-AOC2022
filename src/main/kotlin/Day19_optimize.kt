@@ -1,8 +1,14 @@
 import java.io.File
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
 import kotlin.math.ceil
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.system.measureTimeMillis
 
+interface SearchResult : Callable<Pair<List<Material>, Int>>
+
+//  Optimization inspired by https://www.youtube.com/watch?v=H3PSODv4nf0&ab_channel=hyper-neutrino
 fun main() {
 
     class Resources(val mat: Map<Material, Int> = emptyMap()) {
@@ -121,9 +127,11 @@ fun main() {
                 }
             }
         }
-        map[Material.Geode] = Int.MAX_VALUE
+        map[Material.Geode] = 10000 //  Geodes should be as mush as possible.
         return Resources(map)
     }
+
+    val executor = Executors.newCachedThreadPool()
 
     fun greedySearch(
         blueprints: Map<Material, Blueprint>,
@@ -132,7 +140,8 @@ fun main() {
         time: Int,
         cacheOfGeodes: MutableMap<String, Int>,
         bestGeodesForNow: IntArray,
-        maxMaterialsSpentPerMinute: Resources
+        maxMaterialsSpentPerMinute: Resources,
+        threadingLevel: Int
     ): Pair<List<Material>, Int> {
 
         "Current robots: $robots".logv()
@@ -152,28 +161,41 @@ fun main() {
             return Pair(robots, geodesIfDoNothing)
         }
 
-        val results = blueprints.values.filter { rpm[it.robotType] < maxMaterialsSpentPerMinute[it.robotType] }.map { blueprint ->
+        val threading = threadingLevel < 3 && time < 15
 
-            val minutesWaitForBuild = minutesToBuildRobot(blueprint, resources, rpm) ?: return@map Pair(robots, geodesIfDoNothing)
+        val tasks = blueprints.values.filter { rpm[it.robotType] < maxMaterialsSpentPerMinute[it.robotType] }.map { blueprint ->
+            object : SearchResult {
+                override fun call(): Pair<List<Material>, Int> {
+                    val minutesWaitForBuild = minutesToBuildRobot(blueprint, resources, rpm) ?: return Pair(robots, geodesIfDoNothing)
 
-            if (minutesWaitForBuild > time) {
-                return@map Pair(robots, geodesIfDoNothing)
+                    if (minutesWaitForBuild > time) {
+                        return Pair(robots, geodesIfDoNothing)
+                    }
+
+                    val resLeft = resources + rpm * minutesWaitForBuild - blueprint.costs
+                    val nextRobots = robots.toMutableList().apply { add(blueprint.robotType) }
+                    val minutesLeft = time - minutesWaitForBuild
+
+                    return greedySearch(
+                        blueprints = blueprints,
+                        robots = nextRobots,
+                        resources = resLeft,
+                        time = minutesLeft,
+                        cacheOfGeodes = cacheOfGeodes,
+                        bestGeodesForNow = bestGeodesForNow,
+                        maxMaterialsSpentPerMinute = maxMaterialsSpentPerMinute,
+                        threadingLevel = threadingLevel + if (threading) 1 else 0
+                    )
+                }
             }
-
-            val resLeft = resources + rpm * minutesWaitForBuild - blueprint.costs
-            val nextRobots = robots.toMutableList().apply { add(blueprint.robotType) }
-            val minutesLeft = time - minutesWaitForBuild
-
-            return@map greedySearch(
-                blueprints = blueprints,
-                robots = nextRobots,
-                resources = resLeft,
-                time = minutesLeft,
-                cacheOfGeodes = cacheOfGeodes,
-                bestGeodesForNow = bestGeodesForNow,
-                maxMaterialsSpentPerMinute = maxMaterialsSpentPerMinute
-            )
         }
+
+        val results = if (threading) {
+            tasks.map { executor.submit(it) }.map { it.get() }
+        } else {
+            tasks.map { it.call() }
+        }
+
         val bestResult = results.maxByOrNull { it.second } ?: return Pair(robots, geodesIfDoNothing)
 
         cacheOfGeodes[resultKey] = bestResult.second
@@ -199,17 +221,41 @@ fun main() {
                 time = 24,
                 cacheOfGeodes = mutableMapOf(),
                 bestGeodesForNow = intArrayOf(0),
-                maxMaterialsSpentPerMinute = calcMaxMaterialsSpentInOneMinute(bps)
+                maxMaterialsSpentPerMinute = calcMaxMaterialsSpentInOneMinute(bps),
+                threadingLevel = 0
             )
             "Blueprint #$bpIdx gets ${result.second} geode opened with robots ${result.first.joinToString(separator = "-") { it.name }}".logi()
             return@mapIndexed bpIdx * result.second
         }.reduce { acc, i -> acc + i }
     }
 
+    fun part2(): Int {
+        myLogLevel = 2
+
+        return loadBlueprintsList().take(3).mapIndexed { idx, bps ->
+            val bpIdx = idx + 1
+
+            val result = greedySearch(
+                blueprints = bps,
+                robots = listOf(Material.Ore),
+                resources = Resources(),
+                time = 32,
+                cacheOfGeodes = mutableMapOf(),
+                bestGeodesForNow = intArrayOf(0),
+                maxMaterialsSpentPerMinute = calcMaxMaterialsSpentInOneMinute(bps),
+                threadingLevel = 0
+            )
+            "Blueprint #$bpIdx gets ${result.second} geode opened with robots ${result.first.joinToString(separator = "-") { it.name }}".logi()
+            return@mapIndexed result.second
+        }.reduce { acc, i -> acc * i }
+    }
+
     measureTimeMillis {
-        val part1 = part1()
-//        val part2 = part2()
-        println("part1 = $part1")
-//        println("part2 = $part2")
+//        val part1 = part1()
+        val part2 = part2()
+//        println("part1 = $part1")
+        println("part2 = $part2")
+
+        executor.shutdownNow()
     }.also { it.print() }
 }
