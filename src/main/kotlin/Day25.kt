@@ -42,8 +42,6 @@ fun main() {
 
     measureTimeMillis {
         val part1 = part1()
-//        val part2 = part2()
         println("part1 = $part1")
-//        println("part2 = $part2")
     }.also { "$it milliseconds.".print() }
 }
