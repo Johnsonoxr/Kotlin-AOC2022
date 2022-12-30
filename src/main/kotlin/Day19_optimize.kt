@@ -52,7 +52,7 @@ fun main() {
 
     data class Blueprint(val robotType: Material, val costs: Resources)
 
-    fun loadData() = File("src/main/resources/Day19t.txt").readLines()
+    fun loadData() = File("src/main/resources/Day19.txt").readLines()
 
     fun loadBlueprintsList(): List<Map<Material, Blueprint>> {
         val blueprints = mutableListOf<Map<Material, Blueprint>>()
@@ -105,7 +105,7 @@ fun main() {
             1 -> res[Material.Geode] + rpm[Material.Geode]
             in 2..3 -> {
                 val minuteToWait = minutesToBuildRobot(blueprints[Material.Geode]!!, res, rpm)
-                res[Material.Geode] + rpm[Material.Geode] + max(0, time - (minuteToWait ?: Int.MAX_VALUE))
+                res[Material.Geode] + rpm[Material.Geode] * time + max(0, time - (minuteToWait ?: Int.MAX_VALUE))
             }
 
             else -> null
@@ -126,7 +126,7 @@ fun main() {
 
         val rpm = Resources(robots.groupingBy { it }.eachCount())
 
-        val resultKey = "${rpm.toKey()}-${resources.toKey()}"
+        val resultKey = "$time-${rpm.toKey()}-${resources.toKey()}"
         val geodesInCache = cacheOfGeodes[resultKey]
         if (geodesInCache != null) {
             return Pair(robots, geodesInCache)
@@ -165,7 +165,7 @@ fun main() {
         cacheOfGeodes[resultKey] = bestResult.second
 
         if (bestGeodesForNow[0] < bestResult.second) {
-            "Cracked ${bestResult.second} geodes with ${bestResult.first.joinToString("-") { it.name }}".logi()
+            "Cracked ${bestResult.second} geodes by ${bestResult.first.joinToString("-") { it.name }}".logi()
         }
         bestGeodesForNow[0] = max(bestGeodesForNow[0], bestResult.second)
 
