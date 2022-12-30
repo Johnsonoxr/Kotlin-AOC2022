@@ -68,7 +68,7 @@ fun main() {
 
     data class Blueprint(val robotType: Material, val costs: MaterialResources)
 
-    fun loadData() = File("src/main/resources/Day19.txt").readLines()
+    fun loadData() = File("src/main/resources/Day19t.txt").readLines()
 
     fun loadBlueprintsList(): List<Map<Material, Blueprint>> {
         val blueprints = mutableListOf<Map<Material, Blueprint>>()
@@ -133,40 +133,40 @@ fun main() {
                 }
             }
 
-            4 -> {
-                val minuteToWait = minutesToBuildRobot(blueprints[Material.Geode]!!, resources, rpm) ?: return geodeCrack // waste of time, early stop
-                if (minutes - minuteToWait >= 1) {
-                    return bestShot(
-                        blueprints = blueprints,
-                        rpm = rpm + MaterialResources(mapOf(Material.Geode to 1)),
-                        resources = resources + rpm * minuteToWait - blueprints[Material.Geode]!!.costs,
-                        minutes = minutes - minuteToWait
-                    )
-                } else {
-                    val (lackedMaterial, lackAmount) = (blueprints[Material.Geode]!!.costs - resources).m.maxBy { it.value }
-                    if (lackedMaterial !in rpm) {
-                        return geodeCrack    //  waste of time
-                    }
-                    val mToWait = ceil(lackAmount.toDouble() / rpm[lackedMaterial]).toInt()
-                    if (minutes - mToWait >= 3) {
-                        return bestShot(
-                            blueprints = blueprints,
-                            rpm = rpm + MaterialResources(mapOf(lackedMaterial to 1)),
-                            resources = resources + rpm * mToWait,
-                            minutes = minutes - mToWait
-                        )
-                    }
-                }
-            }
+//            4 -> {
+//                val minuteToWait = minutesToBuildRobot(blueprints[Material.Geode]!!, resources, rpm) ?: return geodeCrack // waste of time, early stop
+//                if (minutes - minuteToWait >= 1) {
+//                    return bestShot(
+//                        blueprints = blueprints,
+//                        rpm = rpm + MaterialResources(mapOf(Material.Geode to 1)),
+//                        resources = resources + rpm * minuteToWait - blueprints[Material.Geode]!!.costs,
+//                        minutes = minutes - minuteToWait
+//                    )
+//                } else {
+//                    val (lackedMaterial, lackAmount) = (blueprints[Material.Geode]!!.costs - resources).m.maxBy { it.value }
+//                    if (lackedMaterial !in rpm) {
+//                        return geodeCrack    //  waste of time
+//                    }
+//                    val mToWait = ceil(lackAmount.toDouble() / rpm[lackedMaterial]).toInt()
+//                    if (minutes - mToWait >= 3) {
+//                        return bestShot(
+//                            blueprints = blueprints,
+//                            rpm = rpm + MaterialResources(mapOf(lackedMaterial to 1)),
+//                            resources = resources + rpm * mToWait,
+//                            minutes = minutes - mToWait
+//                        )
+//                    }
+//                }
+//            }
 
-            in 5..8 -> {
-                return if (Material.Obsidian !in rpm) {
-                    // wast of time, early stop
-                    0
-                } else {
-                    null
-                }
-            }
+//            in 5..8 -> {
+//                return if (Material.Obsidian !in rpm) {
+//                    // wast of time, early stop
+//                    0
+//                } else {
+//                    null
+//                }
+//            }
 
             else -> return null
         }
@@ -233,20 +233,20 @@ fun main() {
                 })
             }
 
-            if (harvestingRobots.size in (8..10)) {
-                val futures = runnableList.map { executors.submit(it) }
-                futures.forEach { it.get() }
-            } else {
+//            if (harvestingRobots.size in (8..10)) {
+//                val futures = runnableList.map { executors.submit(it) }
+//                futures.forEach { it.get() }
+//            } else {
                 runnableList.forEach { it.run() }
-            }
+//            }
         }
 
-        synchronized(bestShotRecord) {
+//        synchronized(bestShotRecord) {
             if (bestShotRecord[0] < bestResources[Material.Geode]) {
                 "$bestResources with ${bestRobots.joinToString("-") { it.harvesting.name }}".logi()
             }
             bestShotRecord[0] = max(bestShotRecord[0], bestResources[Material.Geode])
-        }
+//        }
 
         return Pair(bestRobots, bestResources)
     }
