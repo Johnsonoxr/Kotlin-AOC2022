@@ -192,14 +192,11 @@ fun main() {
         return loadBlueprintsList().mapIndexed { idx, bps ->
             val bpIdx = idx + 1
 
-            val res = Resources()
-            val minutesLeft = 24
-
             val result = greedySearch(
                 blueprints = bps,
                 robots = listOf(Material.Ore),
-                resources = res,
-                time = minutesLeft,
+                resources = Resources(),
+                time = 24,
                 cacheOfGeodes = mutableMapOf(),
                 bestGeodesForNow = intArrayOf(0),
                 maxMaterialsSpentPerMinute = calcMaxMaterialsSpentInOneMinute(bps)
