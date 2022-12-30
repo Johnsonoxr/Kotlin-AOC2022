@@ -119,7 +119,7 @@ fun main() {
         time: Int,
         cacheOfGeodes: MutableMap<String, Int>,
         bestGeodesForNow: IntArray
-    ): Int {
+    ): Pair<List<Material>, Int> {
 
         "Current robots: $robots".logv()
         "Current resources: $resources".logv()
@@ -129,28 +129,28 @@ fun main() {
         val resultKey = "${rpm.toKey()}-${resources.toKey()}"
         val geodesInCache = cacheOfGeodes[resultKey]
         if (geodesInCache != null) {
-            return geodesInCache
+            return Pair(robots, geodesInCache)
         }
 
         val geodesIfDoNothing = resources[Material.Geode] + rpm[Material.Geode] * time
         val bestGeodesByPredict = predictBestGeodes(blueprints, rpm, resources, time)
         if (bestGeodesByPredict != null && bestGeodesByPredict < bestGeodesForNow[0]) {
-            return geodesIfDoNothing
+            return Pair(robots, geodesIfDoNothing)
         }
 
-        val geodesIfBuild: Int = blueprints.values.map { blueprint ->
+        val results: List<Pair<List<Material>, Int>> = blueprints.values.map { blueprint ->
 
-            val minutesWaitForBuild = minutesToBuildRobot(blueprint, resources, rpm) ?: return@map geodesIfDoNothing
+            val minutesWaitForBuild = minutesToBuildRobot(blueprint, resources, rpm) ?: return@map Pair(robots, geodesIfDoNothing)
 
             if (minutesWaitForBuild > time) {
-                return@map geodesIfDoNothing
+                return@map Pair(robots, geodesIfDoNothing)
             }
 
             val resLeft = resources + rpm * minutesWaitForBuild - blueprint.costs
             val nextRobots = robots.toMutableList().apply { add(blueprint.robotType) }
             val minutesLeft = time - minutesWaitForBuild
 
-            return@map greedySearch(
+            val result = greedySearch(
                 blueprints = blueprints,
                 robots = nextRobots,
                 resources = resLeft,
@@ -158,17 +158,18 @@ fun main() {
                 cacheOfGeodes = cacheOfGeodes,
                 bestGeodesForNow = bestGeodesForNow
             )
-        }.max()
-
-        cacheOfGeodes[resultKey] = geodesIfBuild
-
-        if (bestGeodesForNow[0] < geodesIfBuild) {
-//            "Cracked $geodesIfBuild geodes with ${recording.map { it.third }.joinToString("-") { it.harvesting.name }}".logi()
-            "Cracked $geodesIfBuild geodes".logi()
+            return@map Pair(result.first.toMutableList().apply { add(blueprint.robotType) }, result.second)
         }
-        bestGeodesForNow[0] = max(bestGeodesForNow[0], geodesIfBuild)
+        val bestResult = results.maxByOrNull { it.second } ?: return Pair(robots, geodesIfDoNothing)
 
-        return geodesIfBuild
+        cacheOfGeodes[resultKey] = bestResult.second
+
+        if (bestGeodesForNow[0] < bestResult.second) {
+            "Cracked ${bestResult.second} geodes with ${bestResult.first.joinToString("-") { it.name }}".logi()
+        }
+        bestGeodesForNow[0] = max(bestGeodesForNow[0], bestResult.second)
+
+        return bestResult
     }
 
     fun part1(): Int {
@@ -180,7 +181,7 @@ fun main() {
             val res = Resources()
             val minutesLeft = 24
 
-            val geodes = greedySearch(
+            val result = greedySearch(
                 blueprints = bps,
                 robots = listOf(Material.Ore),
                 resources = res,
@@ -188,8 +189,8 @@ fun main() {
                 cacheOfGeodes = mutableMapOf(),
                 bestGeodesForNow = intArrayOf(0)
             )
-//            "Blueprint #$bpIdx gets $geodeOpened geode opened with robots ${robots.joinToString(separator = "-") { it.harvesting.name }}".logi()
-            return@mapIndexed bpIdx * geodes
+            "Blueprint #$bpIdx gets ${result.second} geode opened with robots ${result.first.joinToString(separator = "-") { it.name }}".logi()
+            return@mapIndexed bpIdx * result.second
         }.reduce { acc, i -> acc + i }
     }
 
